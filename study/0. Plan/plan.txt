@@ -1,0 +1,54 @@
+Todo List APP Features
+
+Adavnced Features:
+1. Natural Language to add tasks
+2. Email to task feature: A dedicated email address, if someone forwards an email to this "todo list email", a task will be added. 
+3. A browser extension which turns the current webpage into a task. (reading list or research item).
+4. Bi-Directional API / Webhooks: Instead of just pre-built integrations, provide a webhook URL for every project. This allows power users to connect IFTTT, Zapier, or custom scripts (e.g., "When a GitHub issue is assigned to me, create a task here").
+5. Markdown Support & Rich Text: The description field should support full Markdown (headers, code blocks, bold/italics) and inline image rendering.
+6. File Attachments as Reference: Ability to attach PDFs, images, or Spreadsheets directly to the task.
+7. Undo/Redo History: Infinite undo/redo for list changes. If a user accidentally deletes a project, Ctrl+Z brings it back.
+
+Schedule Management:
+1. Start date 
+2. deadlines
+3. recurrences: daily, weekly, monthly
+4. Time blocking: syncing it with google calendar, apple calendar 
+5. Timezone intelligence: fixed and floating time. 
+
+Structuring:
+1. Infinite nesting.. projects can have subprojects.. tasks can have sub-tasks; sub-tasks can have sub-sub-tasks.
+2. Tags: Many-to-many relationships. A task can be tagged @Computer, #DeepWork, and LowEnergy simultaneously.
+3. Kanban & Gantt Views: Ability to view a project list as a Kanban board (cards moving through columns) or a Gantt chart (timeline dependencies).
+
+Workflow & Execution 
+1. Task Dependencies: Task B cannot be marked complete (or is hidden) until Task A is finished.
+2. Focus Mode: A button that hides all UI clutter, sidebars, and non-relevant tasks, showing only the one task the user is currently working on.
+3. Pomodoro Timer Integration: A built-in timer to work on a task for 25 minutes.
+4. Templates: Save a list of tasks as a template (e.g., "Packing for a trip" or "New Client Onboarding") to re-instantiate later.
+5. Task "Rot" & Auto-Archiving: Visual indicators that a task is going stale. A task created 3 weeks ago starts fading in color or gets a "cobweb" icon. The app prompts: "You've rescheduled this 5 times. Do you want to delete it or move it to a 'Someday' list?"
+6. Eisenhower Matrix View: A dynamic view that automatically sorts tasks into a four-quadrant grid (Urgent/Not Urgent vs. Important/Not Important) based on tags and deadlines.
+7. Soft vs. Hard Deadlines:
+Hard Deadline: The task must be done by this date (Bill payment).
+Soft Deadline (Goal Date): Ideally done by today, but if it slips to tomorrow, don't mark it as "Overdue" in red text; just roll it over quietly.
+8. Notification system to send notifications/reminders to the user. 
+
+Collaboration
+1. Shared Projects with Permissions: Invite others to a list. Set permissions (Read Only, Can Edit, Can Admin).
+2. Task Assignment: Assign a specific task within a shared list to a specific person.
+3. Comments & Activity Log: A chat thread inside every task to discuss details, and a log showing who changed the due date or completed the task.
+
+AI Features:
+1. Break it down: Break a single task into multiple subtasks
+2. Smart Rescheduling using AI.. If a user has 10 overdue tasks, an AI algorithm analyzes their priorities and available calendar slots to propose a realistic new schedule, rather than just moving everything to "Tomorrow."
+3. Context-Aware Suggestions: The app suggests tasks based on context. “You have a 15-minute gap before your next meeting; here are 3 'Quick Wins' you can finish right now.”
+
+Security:
+1. Data at rest should be encrypted.
+2. Complaint with SOC2, GDP, ISO etc. 
+
+Analytics
+1. Productivity Pulse/Velocity: A graph showing how many "Story Points" or tasks you complete per day/week.
+2. Estimated vs. Actual Time: The user estimates a task will take 30 mins. They start the timer. It takes 45 mins. The app records this delta and, over time, tells the user: "You usually underestimate coding tasks by 25%."
+3. Circadian Rhythm Optimization: Based on completion history, the app learns when you are most productive.
+Insight: "You complete 80% of your complex tasks between 9 AM and 11 AM. Schedule deep work then."
