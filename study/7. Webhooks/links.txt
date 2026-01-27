@@ -1,0 +1,2 @@
+https://medium.com/the-restful-web/webhooks-dos-and-dont-s-what-we-learned-after-integrating-100-apis-d567405a3671
+https://systemdesignschool.io/problems/webhook/solution

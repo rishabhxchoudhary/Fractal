@@ -1,0 +1,7 @@
+RFC 5545 (iCalendar).
+This is the internet standard for scheduling. You need to understand RRULE (Recurrence Rules) to build "Every 3rd Friday of the month."
+https://datatracker.ietf.org/doc/html/rfc5545
+
+Implementations and Libraries:
+https://github.com/ical4j/ical4j
+https://github.com/dmfs/lib-recur
