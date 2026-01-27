@@ -9,6 +9,7 @@ Adavnced Features:
 6. File Attachments as Reference: Ability to attach PDFs, images, or Spreadsheets directly to the task.
 7. Undo/Redo History: Infinite undo/redo for list changes. If a user accidentally deletes a project, Ctrl+Z brings it back. (use kafka to store each event by the user for this)
 8. Drag and Drop functionality... (use fractional indexing between 0 and 1 exclusive and infinite precision fractions instead of just 64 bit booleans)
+9. Local first App so that it works offline as well. 
 
 Schedule Management:
 1. Start date 
@@ -53,3 +54,7 @@ Analytics
 2. Estimated vs. Actual Time: The user estimates a task will take 30 mins. They start the timer. It takes 45 mins. The app records this delta and, over time, tells the user: "You usually underestimate coding tasks by 25%."
 3. Circadian Rhythm Optimization: Based on completion history, the app learns when you are most productive.
 Insight: "You complete 80% of your complex tasks between 9 AM and 11 AM. Schedule deep work then."
+
+Tech Stack:
+1. Next JS for frotend
+2. Spring boot for the backend
