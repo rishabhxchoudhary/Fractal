@@ -8,6 +8,7 @@ Adavnced Features:
 5. Markdown Support & Rich Text: The description field should support full Markdown (headers, code blocks, bold/italics) and inline image rendering.
 6. File Attachments as Reference: Ability to attach PDFs, images, or Spreadsheets directly to the task.
 7. Undo/Redo History: Infinite undo/redo for list changes. If a user accidentally deletes a project, Ctrl+Z brings it back.
+8. Drag and Drop functionality... (use fractional indexing between 0 and 1 exclusive and infinite precision fractions instead of just 64 bit booleans)
 
 Schedule Management:
 1. Start date 
