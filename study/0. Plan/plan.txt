@@ -18,7 +18,7 @@ Schedule Management:
 5. Timezone intelligence: fixed and floating time. 
 
 Structuring:
-1. Infinite nesting.. projects can have subprojects.. tasks can have sub-tasks; sub-tasks can have sub-sub-tasks.
+1. Infinite nesting.. projects can have subprojects.. tasks can have sub-tasks; sub-tasks can have sub-sub-tasks. (use closure tables with left, right and length columns)
 2. Tags: Many-to-many relationships. A task can be tagged @Computer, #DeepWork, and LowEnergy simultaneously.
 3. Kanban & Gantt Views: Ability to view a project list as a Kanban board (cards moving through columns) or a Gantt chart (timeline dependencies).
 
