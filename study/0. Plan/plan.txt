@@ -7,7 +7,7 @@ Adavnced Features:
 4. Bi-Directional API / Webhooks: Instead of just pre-built integrations, provide a webhook URL for every project. This allows power users to connect IFTTT, Zapier, or custom scripts (e.g., "When a GitHub issue is assigned to me, create a task here").
 5. Markdown Support & Rich Text: The description field should support full Markdown (headers, code blocks, bold/italics) and inline image rendering.
 6. File Attachments as Reference: Ability to attach PDFs, images, or Spreadsheets directly to the task.
-7. Undo/Redo History: Infinite undo/redo for list changes. If a user accidentally deletes a project, Ctrl+Z brings it back.
+7. Undo/Redo History: Infinite undo/redo for list changes. If a user accidentally deletes a project, Ctrl+Z brings it back. (use kafka to store each event by the user for this)
 8. Drag and Drop functionality... (use fractional indexing between 0 and 1 exclusive and infinite precision fractions instead of just 64 bit booleans)
 
 Schedule Management:
