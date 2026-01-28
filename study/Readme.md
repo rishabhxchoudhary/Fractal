@@ -840,33 +840,69 @@ package com.fractal.backend.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import static org.springframework.security.config.Customizer.withDefaults;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 
+import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
+
+import lombok.RequiredArgsConstructor;
+
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor // Add this for constructor injection
 public class SecurityConfig {
+
+    // Inject your custom success handler
+    private final CustomOAuth2AuthenticationSuccessHandler customOAuth2AuthenticationSuccessHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 // 1. Authorize Requests
                 .authorizeHttpRequests(auth -> auth
-                        // Allow unauthenticated access to the health check endpoint
                         .requestMatchers("/api/health").permitAll()
-                        // All other requests under /api/ must be authenticated
                         .requestMatchers("/api/**").authenticated()
-                        // Any other request (like serving the frontend) can be permitted
                         .anyRequest().permitAll())
                 // 2. Configure OAuth2 Login
-                .oauth2Login(withDefaults()); // This enables the default Google login flow
+                .oauth2Login(oauth2 -> {
+                    // Tell Spring Security to use your custom success handler
+                    oauth2.successHandler(customOAuth2AuthenticationSuccessHandler);
+                });
 
         return http.build();
     }
 }
 ```
+
+- in backend/src/main/java/com/fractal/backend/config/WebConfig.java
+```
+package com.fractal.backend.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+@EnableWebMvc
+public class WebConfig implements WebMvcConfigurer {
+
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**") // Apply CORS to all /api/ endpoints
+                .allowedOrigins(frontendUrl) // Allow requests from your frontend
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") // Allowed HTTP methods
+                .allowedHeaders("*") // Allow all headers
+                .allowCredentials(true); // Allow cookies and credentials
+    }
+}
+```
+
 
 - in backend/src/main/java/com/fractal/backend/security/CustomOAuth2AuthenticationSuccessHandler.java
 ```
