@@ -4,11 +4,13 @@ import { useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const processedRef = useRef(false);
+  const { refreshWorkspaces } = useAuth();
 
   useEffect(() => {
     const processLogin = async () => {
@@ -35,18 +37,17 @@ function AuthCallbackContent() {
         // We will fetch the user data to decide routing
         // (Note: This call will fail until we do Step 2 below, but that's okay for now)
         try {
-          const workspaces = await apiClient.getUserWorkspaces();
-
+          const workspaces = await refreshWorkspaces();
           if (workspaces.length === 0) {
             router.replace("/welcome/new-workspace");
           } else {
-            router.replace("/dashboard");
+            router.replace("/select-workspace");
           }
         } catch (e) {
           // If fetching fails, we default to dashboard or new-workspace
           // This allows us to proceed even if the /me endpoint isn't ready
           console.warn("Could not fetch workspaces, redirecting to default", e);
-          router.replace("/dashboard");
+          router.replace("/select-workspace");
         }
       } catch (error) {
         console.error("Failed to process login", error);

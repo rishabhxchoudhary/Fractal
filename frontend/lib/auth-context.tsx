@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import {
   createContext,
@@ -7,42 +7,44 @@ import {
   useState,
   useCallback,
   type ReactNode,
-} from "react"
-import { apiClient } from "./api"
-import type { User, Workspace, AuthState } from "./types"
+} from "react";
+import { apiClient } from "./api";
+import type { User, Workspace, AuthState } from "./types";
+import { useRouter } from "next/navigation";
 
 interface AuthContextType extends AuthState {
-  login: () => void
-  logout: () => Promise<void>
-  setCurrentWorkspace: (workspace: Workspace) => void
-  refreshWorkspaces: () => Promise<void>
-  handleAuthCallback: (code: string) => Promise<{ redirectUrl: string }>
+  login: () => void;
+  logout: () => Promise<void>;
+  setCurrentWorkspace: (workspace: Workspace) => void;
+  refreshWorkspaces: () => Promise<Workspace[]>;
+  handleAuthCallback: (code: string) => Promise<{ redirectUrl: string }>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null)
+const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [state, setState] = useState<AuthState>({
     user: null,
     workspaces: [],
     currentWorkspace: null,
     isLoading: true,
     isAuthenticated: false,
-  })
+  });
 
   const refreshUser = useCallback(async () => {
     try {
       const [user, workspaces] = await Promise.all([
         apiClient.getCurrentUser(),
         apiClient.getUserWorkspaces(),
-      ])
+      ]);
       setState((prev) => ({
         ...prev,
         user,
         workspaces,
         isAuthenticated: true,
         isLoading: false,
-      }))
+      }));
     } catch {
       setState((prev) => ({
         ...prev,
@@ -50,56 +52,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         workspaces: [],
         isAuthenticated: false,
         isLoading: false,
-      }))
+      }));
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
     if (apiClient.isAuthenticated()) {
-      refreshUser()
+      refreshUser();
     } else {
-      setState((prev) => ({ ...prev, isLoading: false }))
+      setState((prev) => ({ ...prev, isLoading: false }));
     }
-  }, [refreshUser])
+  }, [refreshUser]);
 
   const login = useCallback(() => {
-    window.location.href = apiClient.getGoogleAuthUrl()
-  }, [])
+    window.location.href = apiClient.getGoogleAuthUrl();
+  }, []);
 
   const logout = useCallback(async () => {
-    await apiClient.logout()
+    // await apiClient.logout();
     setState({
       user: null,
       workspaces: [],
       currentWorkspace: null,
       isLoading: false,
       isAuthenticated: false,
-    })
-  }, [])
+    });
+    router.replace("/");
+  }, []);
 
   const setCurrentWorkspace = useCallback((workspace: Workspace) => {
-    setState((prev) => ({ ...prev, currentWorkspace: workspace }))
+    setState((prev) => ({ ...prev, currentWorkspace: workspace }));
     if (typeof window !== "undefined") {
-      localStorage.setItem("currentWorkspaceId", workspace.id)
+      localStorage.setItem("currentWorkspaceId", workspace.id);
     }
-  }, [])
+  }, []);
 
   const refreshWorkspaces = useCallback(async () => {
-    const workspaces = await apiClient.getUserWorkspaces()
-    setState((prev) => ({ ...prev, workspaces }))
-  }, [])
+    const workspaces = await apiClient.getUserWorkspaces();
+    setState((prev) => ({ ...prev, workspaces }));
+    return workspaces;
+  }, []);
 
   const handleAuthCallback = useCallback(async (code: string) => {
-    const response = await apiClient.handleOAuthCallback(code)
+    const response = await apiClient.handleOAuthCallback(code);
     setState((prev) => ({
       ...prev,
       user: response.user,
       workspaces: response.workspaces,
       isAuthenticated: true,
       isLoading: false,
-    }))
-    return { redirectUrl: response.redirectUrl }
-  }, [])
+    }));
+    return { redirectUrl: response.redirectUrl };
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -114,13 +118,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     >
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider")
+    throw new Error("useAuth must be used within an AuthProvider");
   }
-  return context
+  return context;
 }

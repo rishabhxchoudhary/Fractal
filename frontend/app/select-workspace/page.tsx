@@ -83,7 +83,7 @@ export default function SelectWorkspacePage() {
                     <div>
                       <div className="font-medium">{workspace.name}</div>
                       <div className="text-sm text-muted-foreground">
-                        {workspace.slug}.taskflow.app
+                        {workspace.slug}.{window.location.host}
                       </div>
                     </div>
                   </div>
