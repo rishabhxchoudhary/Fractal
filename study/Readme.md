@@ -345,3 +345,6 @@ CREATE TABLE webhook_subscriptions (
     created_at TIMESTAMPTZ
 );
 ```
+
+Steps:
+1. https://github.com/vercel/platforms cloned this repo in the frontend folder. I am building a multi tenant application where each user can create his workspace, every work space will have its own subdomain. 
