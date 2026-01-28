@@ -872,11 +872,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
+import com.fractal.backend.security.JwtAuthenticationFilter;
 
 import lombok.RequiredArgsConstructor;
 
@@ -887,12 +889,14 @@ public class SecurityConfig {
 
     // Inject your custom success handler
     private final CustomOAuth2AuthenticationSuccessHandler customOAuth2AuthenticationSuccessHandler;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 // 0. Enable CORS
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
                 // 1. Authorize Requests
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/health").permitAll()
@@ -906,7 +910,9 @@ public class SecurityConfig {
                 .oauth2Login(oauth2 -> {
                     // Tell Spring Security to use your custom success handler
                     oauth2.successHandler(customOAuth2AuthenticationSuccessHandler);
-                });
+                })
+
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -914,7 +920,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:3000")); // Allow your frontend origin
+        configuration.setAllowedOriginPatterns(List.of(
+                "http://localhost:3000", // Keep localhost for safety
+                "http://lvh.me:3000", // Main domain
+                "http://*.lvh.me:3000" // All subdomains
+        ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*")); // Allow all headers
         configuration.setAllowCredentials(true); // Allow credentials (cookies, authorization headers)
@@ -927,37 +937,9 @@ public class SecurityConfig {
 
 - in backend/src/main/java/com/fractal/backend/config/WebConfig.java
 ```
-package com.fractal.backend.config;
-
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-
-@Configuration
-public class WebConfig implements WebMvcConfigurer {
-
-    @Value("${app.frontend.url}")
-    private String frontendUrl;
-
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**") // Apply CORS to all /api/ endpoints
-                .allowedOrigins(frontendUrl) // Allow requests from your frontend
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") // Allowed HTTP methods
-                .allowedHeaders("*") // Allow all headers
-                .allowCredentials(true); // Allow cookies and credentials
-    }
-}
-```
-
-
-- in backend/src/main/java/com/fractal/backend/security/CustomOAuth2AuthenticationSuccessHandler.java
-```
 package com.fractal.backend.security;
 
 import java.io.IOException;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
@@ -965,10 +947,8 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
-
-import com.fractal.backend.dto.LoginResponse;
 import com.fractal.backend.service.AuthService;
-
+import com.fractal.backend.service.JwtService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -977,50 +957,37 @@ import lombok.extern.slf4j.Slf4j;
 
 @Component
 @RequiredArgsConstructor
-@Slf4j // Lombok annotation for logging
+@Slf4j
 public class CustomOAuth2AuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
     private final AuthService authService;
+    private final JwtService jwtService;
 
-    // We will get this value from our application.properties or .env file
     @Value("${app.frontend.url}")
     private String frontendUrl;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication) throws IOException, ServletException {
-        // 1. Cast the authentication object to get user details
         OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) authentication;
         OAuth2User oauthUser = oauthToken.getPrincipal();
 
-        // 2. Extract user attributes provided by Google
         String email = oauthUser.getAttribute("email");
         String name = oauthUser.getAttribute("name");
         String avatarUrl = oauthUser.getAttribute("picture");
 
-        // 3. Use our existing AuthService to find or create the user
-        log.info("User {} successfully authenticated. Processing login/signup.", email);
-        LoginResponse loginResponse = authService.loginOrSignup(email, name, avatarUrl);
+        // 1. Create/Find User in DB (We still need to ensure they exist)
+        authService.loginOrSignup(email, name, avatarUrl);
 
-        // 4. Determine where to redirect the user
-        String redirectUrl;
-        if (loginResponse.getWorkspaces().isEmpty()) {
-            // If the user has no workspaces, send them to a "create workspace" page
-            redirectUrl = UriComponentsBuilder.fromUriString(frontendUrl)
-                .path("/welcome/new-workspace")
-                .toUriString();
-            log.info("New user or user with no workspaces. Redirecting to create workspace page.");
-        } else {
-            // If the user has workspaces, send them to the dashboard or a selector page
-            // For now, let's just redirect to a generic dashboard path
-            redirectUrl = UriComponentsBuilder.fromUriString(frontendUrl)
-                .path("/dashboard")
-                .toUriString();
-             log.info("Existing user with workspaces. Redirecting to dashboard.");
-        }
+        // 2. Generate JWT Token
+        String token = jwtService.generateToken(email);
+
+        // 3. Redirect ONLY to the callback page with the token
+        // The Frontend will decide where to go next based on user data
+        String redirectUrl = UriComponentsBuilder.fromUriString(frontendUrl)
+                .path("/auth/callback") 
+                .queryParam("token", token)
+                .build().toUriString();
         
-        // TODO: Later we will add a JWT token to the redirect URL for session management
-
-        // 5. Perform the redirect
         response.sendRedirect(redirectUrl);
     }
 }
@@ -1033,6 +1000,8 @@ package com.fractal.backend.security;
 import com.fractal.backend.dto.LoginResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.service.AuthService;
+import com.fractal.backend.service.JwtService;
+
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -1054,6 +1023,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -1068,6 +1039,9 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
     @Mock
     private HttpServletResponse response;
 
+    @Mock
+    private JwtService jwtService;
+
     @InjectMocks
     private CustomOAuth2AuthenticationSuccessHandler successHandler;
 
@@ -1076,14 +1050,14 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
 
     @BeforeEach
     void setUp() {
-        // Manually set the frontendUrl field since @Value won't work in a plain Mockito test
+        // Manually set the frontendUrl field since @Value won't work in a plain Mockito
+        // test
         ReflectionTestUtils.setField(successHandler, "frontendUrl", frontendUrl);
 
         Map<String, Object> attributes = Map.of(
-            "email", "test.user@google.com",
-            "name", "Test User",
-            "picture", "http://example.com/avatar.jpg"
-        );
+                "email", "test.user@google.com",
+                "name", "Test User",
+                "picture", "http://example.com/avatar.jpg");
         oAuth2User = new DefaultOAuth2User(Collections.emptyList(), attributes, "email");
     }
 
@@ -1098,21 +1072,22 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
                 .user(user)
                 .workspaces(new ArrayList<>()) // No workspaces
                 .build();
-        
+
         when(authService.loginOrSignup(anyString(), anyString(), anyString())).thenReturn(loginResponse);
+        when(jwtService.generateToken(anyString())).thenReturn("mock-jwt-token");
 
         // --- Act ---
         successHandler.onAuthenticationSuccess(request, response, token);
 
         // --- Assert ---
         verify(authService).loginOrSignup(
-            "test.user@google.com", 
-            "Test User", 
-            "http://example.com/avatar.jpg"
-        );
+                "test.user@google.com",
+                "Test User",
+                "http://example.com/avatar.jpg");
 
         // Verify that the redirect goes to the "new workspace" page
-        verify(response).sendRedirect(frontendUrl + "/welcome/new-workspace"); 
+        verify(response).sendRedirect(contains("token=mock-jwt-token"));
+        verify(response).sendRedirect(frontendUrl + "/auth/callback?token=mock-jwt-token");
     }
 
     @Test
@@ -1122,35 +1097,33 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
 
         User user = new User();
         user.setEmail("test.user@google.com");
-        
+
         // Simulate a user that has an existing workspace
         List<LoginResponse.WorkspaceDTO> workspaces = List.of(
-            LoginResponse.WorkspaceDTO.builder()
-                .id(UUID.randomUUID())
-                .name("My Workspace")
-                .slug("my-workspace")
-                .role("OWNER")
-                .build()
-        );
+                LoginResponse.WorkspaceDTO.builder()
+                        .id(UUID.randomUUID())
+                        .name("My Workspace")
+                        .slug("my-workspace")
+                        .role("OWNER")
+                        .build());
         LoginResponse loginResponse = LoginResponse.builder()
                 .user(user)
                 .workspaces(workspaces)
                 .build();
-        
+
         when(authService.loginOrSignup(anyString(), anyString(), anyString())).thenReturn(loginResponse);
+        when(jwtService.generateToken(anyString())).thenReturn("mock-jwt-token");
 
         // --- Act ---
         successHandler.onAuthenticationSuccess(request, response, token);
 
         // --- Assert ---
         verify(authService).loginOrSignup(
-            "test.user@google.com", 
-            "Test User", 
-            "http://example.com/avatar.jpg"
-        );
+                "test.user@google.com",
+                "Test User",
+                "http://example.com/avatar.jpg");
 
-        // Verify that the redirect goes to the dashboard
-        verify(response).sendRedirect(frontendUrl + "/dashboard"); 
+        verify(response).sendRedirect(frontendUrl + "/auth/callback?token=mock-jwt-token");
     }
 }
 ```
@@ -1161,9 +1134,10 @@ created a project in google developer console called 'fractal',configured oauth 
 ```
 package com.fractal.backend.controller;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -1174,11 +1148,12 @@ import com.fractal.backend.dto.CreateWorkspaceRequest;
 import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.model.Workspace;
-import com.fractal.backend.repository.UserRepository;
 import com.fractal.backend.service.WorkspaceService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.web.bind.annotation.GetMapping;
 
 @RestController
 @RequestMapping("/api/workspaces")
@@ -1186,23 +1161,15 @@ import lombok.RequiredArgsConstructor;
 public class WorkspaceController {
 
     private final WorkspaceService workspaceService;
-    private final UserRepository userRepository;
 
     @PostMapping
     public WorkspaceResponse createWorkspace(
-            @AuthenticationPrincipal OAuth2User principal,
+            @AuthenticationPrincipal User user,
             @Valid @RequestBody CreateWorkspaceRequest request) {
 
-        if (principal == null) {
+        if (user == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
         }
-
-        String email = principal.getAttribute("email");
-        
-        // Find the internal User ID based on the OAuth email
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-
         // Call the service
         Workspace workspace = workspaceService.createWorkspace(user.getId(), request.getName());
 
@@ -1213,6 +1180,14 @@ public class WorkspaceController {
                 .slug(workspace.getSlug())
                 .role("OWNER")
                 .build();
+    }
+
+    @GetMapping
+    public List<WorkspaceResponse> getUserWorkspaces(@AuthenticationPrincipal User user) {
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
+        }
+        return workspaceService.getWorkspacesForUser(user.getId());
     }
 }
 ```
@@ -1411,13 +1386,16 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
 package com.fractal.backend.service;
 
 import java.text.Normalizer;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.Workspace;
 import com.fractal.backend.model.WorkspaceMember;
 import com.fractal.backend.repository.WorkspaceMemberRepository;
@@ -1439,7 +1417,7 @@ public class WorkspaceService {
     public Workspace createWorkspace(UUID userId, String name) {
         // 1. Generate a slug (URL friendly version of name)
         String slug = toSlug(name);
-        
+
         // 2. Ensure slug uniqueness (simple append strategy)
         String originalSlug = slug;
         int count = 1;
@@ -1455,7 +1433,7 @@ public class WorkspaceService {
                 .slug(slug)
                 .planType("FREE")
                 .build();
-        
+
         Workspace savedWorkspace = workspaceRepository.save(workspace);
 
         // 4. Add Creator as OWNER
@@ -1464,7 +1442,7 @@ public class WorkspaceService {
                 .userId(userId)
                 .role("OWNER")
                 .build();
-        
+
         workspaceMemberRepository.save(member);
 
         return savedWorkspace;
@@ -1477,6 +1455,29 @@ public class WorkspaceService {
         String slug = NONLATIN.matcher(normalized).replaceAll("");
         return slug.toLowerCase(Locale.ENGLISH);
     }
+
+    public List<WorkspaceResponse> getWorkspacesForUser(UUID userId) {
+        // 1. Find all memberships for this user
+        List<WorkspaceMember> memberships = workspaceMemberRepository.findAllByUserId(userId);
+
+        // 2. For each membership, fetch the Workspace details and map to DTO
+        return memberships.stream()
+                .map(member -> {
+                    Workspace w = workspaceRepository.findById(member.getWorkspaceId()).orElse(null);
+                    if (w == null)
+                        return null;
+
+                    return WorkspaceResponse.builder()
+                            .id(w.getId())
+                            .name(w.getName())
+                            .slug(w.getSlug())
+                            .role(member.getRole())
+                            .build();
+                })
+                .filter(response -> response != null) // Filter out any nulls if workspace wasn't found
+                .collect(Collectors.toList());
+    }
+
 }
 ```
 
@@ -1484,6 +1485,7 @@ public class WorkspaceService {
 ```
 package com.fractal.controller;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -1498,14 +1500,17 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper; // Import ObjectMapper
-import com.fractal.backend.config.SecurityConfig;
+import com.fractal.backend.config.TestSecurityConfig;
 import com.fractal.backend.controller.WorkspaceController;
 import com.fractal.backend.dto.CreateWorkspaceRequest;
+import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.model.Workspace;
 import com.fractal.backend.repository.UserRepository;
@@ -1513,7 +1518,7 @@ import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
 import com.fractal.backend.service.WorkspaceService;
 
 @WebMvcTest(WorkspaceController.class)
-@Import(SecurityConfig.class)
+@Import(TestSecurityConfig.class)
 class WorkspaceControllerTest {
 
     @Autowired
@@ -1561,13 +1566,44 @@ class WorkspaceControllerTest {
         // Act & Assert
         mockMvc.perform(post("/api/workspaces")
                 .with(oauth2Login().attributes(attrs -> attrs.put("email", email)))
-                .with(csrf()) 
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))) // Use the manual instance
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value(workspaceName))
                 .andExpect(jsonPath("$.slug").value("my-new-company"))
                 .andExpect(jsonPath("$.role").value("OWNER"));
+    }
+
+    @Test
+    void getUserWorkspaces_ShouldReturnList() throws Exception {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        User mockUser = new User();
+        mockUser.setId(userId);
+        mockUser.setEmail("test@fractal.com");
+
+        WorkspaceResponse ws1 = WorkspaceResponse.builder()
+                .id(UUID.randomUUID()).name("WS 1").slug("ws-1").role("OWNER").build();
+
+        // Mock the user finding (needed for the filter to set the
+        // @AuthenticationPrincipal)
+        when(userRepository.findByEmail("test@fractal.com")).thenReturn(Optional.of(mockUser));
+
+        // Mock the service call
+        when(workspaceService.getWorkspacesForUser(userId)).thenReturn(List.of(ws1));
+
+        // Act & Assert
+        mockMvc.perform(get("/api/workspaces")
+                // We simulate the JWT auth by mocking the OAuth2 user,
+                // OR if you are using the new JWT filter in tests, you might need to mock that
+                // behavior.
+                // For this WebMvcTest, simply injecting the user via security context is
+                // easiest:
+                .with(oauth2Login().attributes(attrs -> attrs.put("email", "test@fractal.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("WS 1"))
+                .andExpect(jsonPath("$[0].role").value("OWNER"));
     }
 }
 ```
@@ -1646,6 +1682,193 @@ class WorkspaceServiceTest {
 }
 ```
 
+- in backend/src/main/java/com/fractal/backend/controller/AuthController.java
+```
+package com.fractal.backend.controller;
+
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.fractal.backend.model.User;
+
+import jakarta.servlet.http.HttpServletResponse;
+
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+
+    @GetMapping("/me")
+    public User getCurrentUser(@AuthenticationPrincipal User user) {
+        // The 'user' is injected by our JwtAuthenticationFilter
+        return user;
+    }
+
+    @PostMapping("/logout")
+    public void logout(HttpServletResponse response) {
+        // Since we are stateless (JWT), logout is mostly client-side (clearing
+        // localStorage).
+        // But we can clear any cookies if we set them.
+    }
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/security/JwtAuthenticationFilter.java
+```
+package com.fractal.backend.security;
+
+import java.io.IOException;
+
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.fractal.backend.model.User;
+import com.fractal.backend.repository.UserRepository;
+import com.fractal.backend.service.JwtService;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+
+@Component
+@RequiredArgsConstructor
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private final JwtService jwtService;
+    private final UserRepository userRepository;
+
+    @Override
+    protected void doFilterInternal(
+            @lombok.NonNull HttpServletRequest request,
+            @lombok.NonNull HttpServletResponse response,
+            @lombok.NonNull FilterChain filterChain) throws ServletException, IOException {
+
+        final String authHeader = request.getHeader("Authorization");
+        final String jwt;
+        final String userEmail;
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        jwt = authHeader.substring(7); // Remove "Bearer "
+        try {
+            userEmail = jwtService.extractUsername(jwt);
+
+            // 2. If user is found and not already authenticated in this context
+            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+
+                // 3. Load user from DB
+                // Ideally use a UserDetailsService, but we can fetch directly for now
+                User user = userRepository.findByEmail(userEmail).orElse(null);
+
+                if (user != null && jwtService.isTokenValid(jwt, user.getEmail())) {
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                            user,
+                            null,
+                            null);
+
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
+            }
+        } catch (Exception e) {
+            // Token invalid or expired
+            logger.error("Cannot set user authentication: {}", e);
+        }
+
+        filterChain.doFilter(request, response);
+    }
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/service/JwtService.java
+```
+package com.fractal.backend.service;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.security.Key;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
+
+@Service
+public class JwtService {
+
+    @Value("${JWT_SECRET}")
+    private String secretKey;
+
+    @Value("${JWT_EXPIRATION}")
+    private long jwtExpiration;
+
+    public String extractUsername(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+
+    public String generateToken(String email) {
+        return generateToken(new HashMap<>(), email);
+    }
+
+    public String generateToken(Map<String, Object> extraClaims, String email) {
+        return Jwts.builder()
+                .setClaims(extraClaims)
+                .setSubject(email)
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
+                .signWith(getSignInKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public boolean isTokenValid(String token, String email) {
+        final String username = extractUsername(token);
+        return (username.equals(email)) && !isTokenExpired(token);
+    }
+
+    private boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
+
+    private Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+
+    private Claims extractAllClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(getSignInKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+    }
+
+    private Key getSignInKey() {
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
+}
+```
+
+
+
 
 
 google login is working. 
@@ -1653,22 +1876,25 @@ google login is working.
 this is the current file structure is frontend
 .
 ├── app
-│   ├── auth
-│   │   └── callback
-│   │       ├── loading.tsx
-│   │       └── page.tsx
-│   ├── dashboard
+│   ├── (site)
+│   │   ├── auth
+│   │   │   └── callback
+│   │   │       ├── loading.tsx
+│   │   │       └── page.tsx
+│   │   ├── login
+│   │   │   └── page.tsx
+│   │   ├── page.tsx
+│   │   ├── select-workspace
+│   │   │   └── page.tsx
+│   │   └── welcome
+│   │       └── new-workspace
+│   │           └── page.tsx
+│   ├── [domain]
+│   │   ├── dashboard
+│   │   │   └── page.tsx
 │   │   └── page.tsx
 │   ├── globals.css
-│   ├── layout.tsx
-│   ├── login
-│   │   └── page.tsx
-│   ├── page.tsx
-│   ├── select-workspace
-│   │   └── page.tsx
-│   └── welcome
-│       └── new-workspace
-│           └── page.tsx
+│   └── layout.tsx
 ├── bun.lock
 ├── components
 │   ├── auth
@@ -1751,6 +1977,7 @@ this is the current file structure is frontend
 ├── package.json
 ├── pnpm-lock.yaml
 ├── postcss.config.mjs
+├── proxy.ts
 ├── public
 │   ├── apple-icon.png
 │   ├── icon-dark-32x32.png
@@ -1765,9 +1992,279 @@ this is the current file structure is frontend
 │   └── globals.css
 └── tsconfig.json
 
-This is the authContext:
+
+- in frontend/app/(site)/auth/callback/page.tsx
+```
+"use client";
+
+import { useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { apiClient } from "@/lib/api";
+import { Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+
+function AuthCallbackContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const processedRef = useRef(false);
+  const { refreshWorkspaces } = useAuth();
+
+  useEffect(() => {
+    const processLogin = async () => {
+      // Prevent double execution in React Strict Mode
+      if (processedRef.current) return;
+      processedRef.current = true;
+
+      // 1. Check for the token we sent from the backend
+      const token = searchParams.get("token");
+
+      if (!token) {
+        // If we still have the old "error" param or no token
+        const error = searchParams.get("error");
+        console.error("Auth Error:", error || "No token found");
+        router.push("/login?error=" + (error || "no_token"));
+        return;
+      }
+
+      try {
+        // 2. Set the token in our API client (saves to localStorage)
+        apiClient.setAccessToken(token);
+
+        // 3. Force a reload of the user state or just redirect
+        // We will fetch the user data to decide routing
+        // (Note: This call will fail until we do Step 2 below, but that's okay for now)
+        try {
+          const workspaces = await refreshWorkspaces();
+          if (workspaces.length === 0) {
+            router.replace("/welcome/new-workspace");
+          } else {
+            router.replace("/select-workspace");
+          }
+        } catch (e) {
+          // If fetching fails, we default to dashboard or new-workspace
+          // This allows us to proceed even if the /me endpoint isn't ready
+          console.warn("Could not fetch workspaces, redirecting to default", e);
+          router.replace("/select-workspace");
+        }
+      } catch (error) {
+        console.error("Failed to process login", error);
+        router.push("/login?error=auth_failed");
+      }
+    };
+
+    processLogin();
+  }, [router, searchParams]);
+
+  return (
+    <div className="flex h-screen w-full items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-muted-foreground">Authenticating...</p>
+      </div>
+    </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <AuthCallbackContent />
+    </Suspense>
+  );
+}
+
+```
+
+- in frontend/app/welcome/new-workspace/page.tsx
 ```
 "use client"
+
+import React from "react"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import { apiClient } from "@/lib/api"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { toast } from "sonner"
+import { ArrowRight, Building2, Loader2, Sparkles } from "lucide-react"
+
+export default function NewWorkspacePage() {
+  const router = useRouter()
+  const { user, refreshWorkspaces, setCurrentWorkspace } = useAuth()
+  const [workspaceName, setWorkspaceName] = useState("")
+  const [isCreating, setIsCreating] = useState(false)
+
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+  }
+
+  const handleCreateWorkspace = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!workspaceName.trim()) {
+      toast.error("Please enter a workspace name")
+      return
+    }
+
+    setIsCreating(true)
+
+    try {
+      const response = await apiClient.createWorkspace({ name: workspaceName })
+      await refreshWorkspaces()
+      setCurrentWorkspace(response.workspace)
+      toast.success("Workspace created successfully!")
+      router.push(response.redirectUrl || "/dashboard")
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create workspace"
+      )
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const slug = generateSlug(workspaceName)
+
+  return (
+    <div className="min-h-screen flex flex-col bg-muted/30">
+      {/* Header */}
+      <header className="border-b bg-background/80 backdrop-blur-sm">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-foreground flex items-center justify-center">
+              <span className="text-background font-bold">T</span>
+            </div>
+            <span className="font-semibold">TaskFlow</span>
+          </div>
+          {user && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>{user.email}</span>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-lg space-y-8">
+          {/* Welcome message */}
+          <div className="text-center space-y-2">
+            <div className="flex items-center justify-center mb-4">
+              <div className="h-16 w-16 rounded-2xl bg-foreground/5 flex items-center justify-center">
+                <Sparkles className="h-8 w-8 text-foreground" />
+              </div>
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Create your first workspace
+            </h1>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              Workspaces are shared environments where you and your team can
+              collaborate on tasks and projects.
+            </p>
+          </div>
+
+          {/* Workspace form */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Workspace details
+              </CardTitle>
+              <CardDescription>
+                Choose a name for your workspace. You can always change this
+                later.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateWorkspace} className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="workspace-name">Workspace name</Label>
+                  <Input
+                    id="workspace-name"
+                    placeholder="Acme Inc."
+                    value={workspaceName}
+                    onChange={(e) => setWorkspaceName(e.target.value)}
+                    className="h-12 text-base"
+                    autoFocus
+                  />
+                </div>
+
+                {slug && (
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground">
+                      Workspace URL
+                    </Label>
+                    <div className="flex items-center gap-0 rounded-md border bg-muted/50 px-3 py-2">
+                      <span className="text-sm text-muted-foreground">
+                        taskflow.app/
+                      </span>
+                      <span className="text-sm font-medium">{slug}</span>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  className="w-full h-12 text-base"
+                  disabled={!workspaceName.trim() || isCreating}
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Creating workspace...
+                    </>
+                  ) : (
+                    <>
+                      Create workspace
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Tips */}
+          <div className="bg-background border rounded-lg p-4 space-y-3">
+            <h3 className="font-medium text-sm">Tips for workspace names</h3>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <span className="text-foreground">1.</span>
+                Use your company or team name for easy recognition
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-foreground">2.</span>
+                Keep it short and memorable for quick access
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-foreground">3.</span>
+                You can create multiple workspaces for different projects
+              </li>
+            </ul>
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}
+```
+
+- in frontend/lib/auth-context.tsx
+```
+"use client";
 
 import {
   createContext,
@@ -1776,42 +2273,44 @@ import {
   useState,
   useCallback,
   type ReactNode,
-} from "react"
-import { apiClient } from "./api"
-import type { User, Workspace, AuthState } from "./types"
+} from "react";
+import { apiClient } from "./api";
+import type { User, Workspace, AuthState } from "./types";
+import { useRouter } from "next/navigation";
 
 interface AuthContextType extends AuthState {
-  login: () => void
-  logout: () => Promise<void>
-  setCurrentWorkspace: (workspace: Workspace) => void
-  refreshWorkspaces: () => Promise<void>
-  handleAuthCallback: (code: string) => Promise<{ redirectUrl: string }>
+  login: () => void;
+  logout: () => Promise<void>;
+  setCurrentWorkspace: (workspace: Workspace) => void;
+  refreshWorkspaces: () => Promise<Workspace[]>;
+  handleAuthCallback: (code: string) => Promise<{ redirectUrl: string }>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null)
+const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [state, setState] = useState<AuthState>({
     user: null,
     workspaces: [],
     currentWorkspace: null,
     isLoading: true,
     isAuthenticated: false,
-  })
+  });
 
   const refreshUser = useCallback(async () => {
     try {
       const [user, workspaces] = await Promise.all([
         apiClient.getCurrentUser(),
         apiClient.getUserWorkspaces(),
-      ])
+      ]);
       setState((prev) => ({
         ...prev,
         user,
         workspaces,
         isAuthenticated: true,
         isLoading: false,
-      }))
+      }));
     } catch {
       setState((prev) => ({
         ...prev,
@@ -1819,56 +2318,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         workspaces: [],
         isAuthenticated: false,
         isLoading: false,
-      }))
+      }));
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
     if (apiClient.isAuthenticated()) {
-      refreshUser()
+      refreshUser();
     } else {
-      setState((prev) => ({ ...prev, isLoading: false }))
+      setState((prev) => ({ ...prev, isLoading: false }));
     }
-  }, [refreshUser])
+  }, [refreshUser]);
 
   const login = useCallback(() => {
-    window.location.href = apiClient.getGoogleAuthUrl()
-  }, [])
+    window.location.href = apiClient.getGoogleAuthUrl();
+  }, []);
 
   const logout = useCallback(async () => {
-    await apiClient.logout()
+    await apiClient.logout();
     setState({
       user: null,
       workspaces: [],
       currentWorkspace: null,
       isLoading: false,
       isAuthenticated: false,
-    })
-  }, [])
+    });
+    router.replace("/");
+  }, []);
 
   const setCurrentWorkspace = useCallback((workspace: Workspace) => {
-    setState((prev) => ({ ...prev, currentWorkspace: workspace }))
+    setState((prev) => ({ ...prev, currentWorkspace: workspace }));
     if (typeof window !== "undefined") {
-      localStorage.setItem("currentWorkspaceId", workspace.id)
+      localStorage.setItem("currentWorkspaceId", workspace.id);
     }
-  }, [])
+  }, []);
 
   const refreshWorkspaces = useCallback(async () => {
-    const workspaces = await apiClient.getUserWorkspaces()
-    setState((prev) => ({ ...prev, workspaces }))
-  }, [])
+    const workspaces = await apiClient.getUserWorkspaces();
+    setState((prev) => ({ ...prev, workspaces }));
+    return workspaces;
+  }, []);
 
   const handleAuthCallback = useCallback(async (code: string) => {
-    const response = await apiClient.handleOAuthCallback(code)
+    const response = await apiClient.handleOAuthCallback(code);
     setState((prev) => ({
       ...prev,
       user: response.user,
       workspaces: response.workspaces,
       isAuthenticated: true,
       isLoading: false,
-    }))
-    return { redirectUrl: response.redirectUrl }
-  }, [])
+    }));
+    return { redirectUrl: response.redirectUrl };
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -1883,18 +2384,252 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     >
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider")
+    throw new Error("useAuth must be used within an AuthProvider");
   }
-  return context
+  return context;
 }
 ```
 
+- in frontend/app/(site)/select-workspace/page.tsx
+```
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Building2, ChevronRight, Plus } from "lucide-react";
+import type { Workspace } from "@/lib/types";
+
+export default function SelectWorkspacePage() {
+  const router = useRouter();
+  const { user, workspaces, logout } = useAuth();
+
+  const handleSelectWorkspace = (workspace: Workspace) => {
+    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+    const protocol = window.location.protocol;
+    const targetUrl = `${protocol}//${workspace.slug}.${rootDomain}/dashboard`;
+    window.location.href = targetUrl;
+  };
+
+  const handleCreateNew = () => {
+    router.push("/welcome/new-workspace");
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    router.push("/login");
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-muted/30">
+      {/* Header */}
+      <header className="border-b bg-background/80 backdrop-blur-sm">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-foreground flex items-center justify-center">
+              <span className="text-background font-bold">T</span>
+            </div>
+            <span className="font-semibold">TaskFlow</span>
+          </div>
+          <div className="flex items-center gap-4">
+            {user && (
+              <span className="text-sm text-muted-foreground">
+                {user.email}
+              </span>
+            )}
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              Sign out
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-lg space-y-6">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">
+              Choose a workspace
+            </h1>
+            <p className="text-muted-foreground">
+              Select a workspace to continue or create a new one
+            </p>
+          </div>
+
+          {/* Workspace list */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-lg">Your workspaces</CardTitle>
+              <CardDescription>
+                You have access to {workspaces.length} workspace
+                {workspaces.length !== 1 ? "s" : ""}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {workspaces.map((workspace) => (
+                <button
+                  key={workspace.id}
+                  onClick={() => handleSelectWorkspace(workspace)}
+                  className="w-full flex items-center justify-between p-3 rounded-lg border bg-background hover:bg-accent transition-colors text-left group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-foreground/5 flex items-center justify-center">
+                      <Building2 className="h-5 w-5 text-foreground" />
+                    </div>
+                    <div>
+                      <div className="font-medium">{workspace.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {workspace.slug}.{window.location.host}
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Create new workspace */}
+          <Button
+            variant="outline"
+            className="w-full h-12 gap-2 bg-transparent"
+            onClick={handleCreateNew}
+          >
+            <Plus className="h-4 w-4" />
+            Create new workspace
+          </Button>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+```
+
+- in frontend/app/[domain]/dashboard/page.tsx
+```
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
+import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
+import { DashboardContent } from "@/components/dashboard/dashboard-content";
+import { getSubdomain } from "@/lib/utils"; // Make sure you import this
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const {
+    isAuthenticated,
+    isLoading,
+    workspaces,
+    currentWorkspace,
+    setCurrentWorkspace,
+  } = useAuth();
+  const [isWorkspaceResolved, setIsWorkspaceResolved] = useState(false);
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (!isAuthenticated) {
+      const rootDomain =
+        process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+      const protocol = window.location.protocol;
+      window.location.href = `${protocol}//${rootDomain}/login`;
+      return;
+    }
+
+    // --- NEW LOGIC START ---
+
+    // 1. Get the subdomain from the current hostname
+    // We can rely on window.location.hostname in the client
+    const hostname = window.location.hostname;
+    console.log("hostname", hostname);
+    const subdomain = getSubdomain(hostname);
+    console.log("subdomain", subdomain);
+    if (subdomain) {
+      console.log(subdomain);
+      // 2. Find the workspace that matches this subdomain
+      const matchingWorkspace = workspaces.find((w) => w.slug === subdomain);
+
+      if (matchingWorkspace) {
+        // 3. Set it as active if it's not already
+        if (currentWorkspace?.id !== matchingWorkspace.id) {
+          setCurrentWorkspace(matchingWorkspace);
+        }
+        setIsWorkspaceResolved(true);
+      } else {
+        // 4. If user has no access to this specific subdomain workspace -> 404 or redirect
+        // For now, let's send them back to selection
+        console.warn(`User does not have access to workspace: ${subdomain}`);
+        return;
+        router.push("/select-workspace"); // This will get rewritten to the root domain by middleware if configured, or just go to root
+      }
+    } else {
+      // If we are somehow on the dashboard without a subdomain (should be impossible via middleware),
+      console.log("no subdomain found");
+      return;
+      // send to select-workspace
+
+      router.push("/select-workspace");
+    }
+    // --- NEW LOGIC END ---
+  }, [
+    isAuthenticated,
+    isLoading,
+    workspaces,
+    currentWorkspace,
+    setCurrentWorkspace,
+    router,
+  ]);
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-2">
+          <div className="animate-pulse text-muted-foreground">
+            Authenticating...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading || !isWorkspaceResolved) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-2">
+          <div className="animate-pulse text-muted-foreground">
+            Loading Workspace...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <DashboardContent />
+    </DashboardLayout>
+  );
+}
+```
+
+- in frontend/lib/api.ts
 ```
 import type {
   LoginResponse,
@@ -1902,120 +2637,125 @@ import type {
   CreateWorkspaceResponse,
   User,
   Workspace,
-} from "./types"
+} from "./types";
+import Cookies from "js-cookie";
+import { getCookieDomain } from "./utils";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 class ApiClient {
-  private accessToken: string | null = null
+  private accessToken: string | null = null;
 
   setAccessToken(token: string | null) {
-    this.accessToken = token
+    this.accessToken = token;
     if (token) {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("accessToken", token)
-      }
+      Cookies.set("accessToken", token, {
+        expires: 7,
+        domain: getCookieDomain(),
+        sameSite: "Lax",
+      });
     } else {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("accessToken")
-      }
+      this.logout();
     }
   }
 
   getAccessToken(): string | null {
-    if (this.accessToken) return this.accessToken
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("accessToken")
+    if (this.accessToken) return this.accessToken;
+    const token = Cookies.get("accessToken");
+    if (token) {
+      this.accessToken = token;
+      return token;
     }
-    return null
+    return null;
   }
-
   private async fetch<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
   ): Promise<T> {
-    const token = this.getAccessToken()
+    const token = this.getAccessToken();
     const headers: HeadersInit = {
       "Content-Type": "application/json",
       ...options.headers,
-    }
+    };
 
     if (token) {
-      ;(headers as Record<string, string>)["Authorization"] = `Bearer ${token}`
+      (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
     }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
-      credentials: "include",
-    })
+      credentials: "omit",
+    });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.message || `API Error: ${response.status}`)
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || `API Error: ${response.status}`);
     }
 
-    return response.json()
+    return response.json();
   }
 
   // Auth endpoints
   getGoogleAuthUrl(): string {
-    const redirectUri = typeof window !== "undefined" 
-      ? `${window.location.origin}/auth/callback`
-      : ""
-    return `${API_BASE_URL}/oauth2/authorization/google?redirect_uri=${encodeURIComponent(redirectUri)}`
+    const redirectUri =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/auth/callback`
+        : "";
+    return `${API_BASE_URL}/oauth2/authorization/google?redirect_uri=${encodeURIComponent(redirectUri)}`;
   }
 
   async handleOAuthCallback(code: string): Promise<LoginResponse> {
-    const response = await this.fetch<LoginResponse>("/api/auth/oauth/callback", {
-      method: "POST",
-      body: JSON.stringify({ code }),
-    })
-    this.setAccessToken(response.accessToken)
-    return response
+    const response = await this.fetch<LoginResponse>(
+      "/api/auth/oauth/callback",
+      {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      },
+    );
+    this.setAccessToken(response.accessToken);
+    return response;
   }
 
   async getCurrentUser(): Promise<User> {
-    return this.fetch<User>("/api/auth/me")
+    return this.fetch<User>("/api/auth/me");
   }
 
   async getUserWorkspaces(): Promise<Workspace[]> {
-    return this.fetch<Workspace[]>("/api/workspaces")
+    return this.fetch<Workspace[]>("/api/workspaces");
   }
 
   async createWorkspace(
-    data: CreateWorkspaceRequest
+    data: CreateWorkspaceRequest,
   ): Promise<CreateWorkspaceResponse> {
     return this.fetch<CreateWorkspaceResponse>("/api/workspaces", {
       method: "POST",
       body: JSON.stringify(data),
-    })
+    });
   }
 
-  async logout(): Promise<void> {
-    try {
-      await this.fetch("/api/auth/logout", { method: "POST" })
-    } finally {
-      this.setAccessToken(null)
-    }
+  logout() {
+    this.accessToken = null;
+    Cookies.remove("accessToken", { domain: getCookieDomain() });
+    Cookies.remove("accessToken"); // Fallback cleanup
   }
 
   // Check if user is authenticated
   isAuthenticated(): boolean {
-    return !!this.getAccessToken()
+    return !!this.getAccessToken();
   }
 }
 
-export const apiClient = new ApiClient()
+export const apiClient = new ApiClient();
 ```
 
 Till this point everything is done and implemented by me. i want your help after this point. 
 
 Run spring boot using: ./mvnw spring-boot:run
 
-2. Create a home page and login I want to setup google oauth 2 for login. I have setup the backend in spring boot using TDD. the signup flow should be like notion/slack, where user must first create a workspace if he has not done yet, if he has multiple workspaces, as i want to allow preview deployements to also be able to log in when i host this on vercel. also this is multitenant architecture.. so basically the user will go to workspace-name.domain.com.. You can use any component library for this. 
+2. Create a home page and login I want to setup google oauth 2 for login. I have setup the backend in spring boot using TDD. the signup flow should be like notion/slack, where user must first create a workspace if he has not done yet, if he has multiple workspaces, as i want to allow preview deployements to also be able to log in when i host this on vercel. also this is multitenant architecture.. so basically the user will go to workspace-name.domain.com.. You can use any component library for this. currently whatever workspace the user selects on frontend, he is redirected to /dashboard. i dont want this behaviour, the hostname should also change... like workspace-name.domain.com/dashboard.
 
-i found this on github, maybe it will be helpful:
+i found this on github, maybe it will be helpful for your reference:
 this is the middleware.ts 
 ```
 import { type NextRequest, NextResponse } from 'next/server';
@@ -2093,5 +2833,5 @@ export const config = {
 };
 ```
 
-as you can see the backend is still not ready for auth. this is my step2 to complete the backend and frontend till this point. 
-this is my plan, i need to move to step 2. can you help me do it step by step. please go step by step and let me complete a step then move to the next step. I have never actually worked with JAVA before.  I also want to use .env file instead of hardcoding the credentials if possible as i am pushing these to github.
+this is my step2 to complete the backend and frontend till this point. 
+this is my plan, i need to move to step 2. can you help me do it step by step. please go step by step and let me complete a step then move to the next step.

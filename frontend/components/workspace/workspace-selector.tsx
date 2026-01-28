@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/auth-context"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,23 +11,37 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Building2, Check, ChevronsUpDown, Plus, Settings } from "lucide-react"
-import type { Workspace } from "@/lib/types"
+} from "@/components/ui/dropdown-menu";
+import { Building2, Check, ChevronsUpDown, Plus, Settings } from "lucide-react";
+import type { Workspace } from "@/lib/types";
 
 interface WorkspaceSelectorProps {
-  className?: string
+  className?: string;
 }
 
 export function WorkspaceSelector({ className }: WorkspaceSelectorProps) {
-  const router = useRouter()
-  const { workspaces, currentWorkspace, setCurrentWorkspace } = useAuth()
+  const router = useRouter();
+  const { workspaces, currentWorkspace } = useAuth();
 
   const handleSelectWorkspace = (workspace: Workspace) => {
-    setCurrentWorkspace(workspace)
-    // In a real subdomain-based setup, you'd redirect to the workspace subdomain
-    // For now, we just update the current workspace context
-  }
+    // If selecting the current one, do nothing
+    if (workspace.id === currentWorkspace?.id) return;
+
+    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+    const protocol = window.location.protocol;
+
+    // Force full browser redirect to the workspace subdomain
+    window.location.href = `${protocol}//${workspace.slug}.${rootDomain}/dashboard`;
+  };
+
+  const handleCreateNew = () => {
+    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+    const protocol = window.location.protocol;
+
+    // Redirect to the root domain to create a new workspace
+    // (The /welcome/new-workspace route exists under (site))
+    window.location.href = `${protocol}//${rootDomain}/welcome/new-workspace`;
+  };
 
   return (
     <DropdownMenu>
@@ -36,7 +50,7 @@ export function WorkspaceSelector({ className }: WorkspaceSelectorProps) {
           variant="ghost"
           className={cn(
             "justify-between gap-2 h-10 px-3 hover:bg-accent",
-            className
+            className,
           )}
         >
           <div className="flex items-center gap-2">
@@ -74,10 +88,7 @@ export function WorkspaceSelector({ className }: WorkspaceSelectorProps) {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={() => router.push("/welcome/new-workspace")}
-          className="cursor-pointer"
-        >
+        <DropdownMenuItem onClick={handleCreateNew} className="cursor-pointer">
           <Plus className="h-4 w-4 mr-2" />
           Create new workspace
         </DropdownMenuItem>
@@ -87,5 +98,5 @@ export function WorkspaceSelector({ className }: WorkspaceSelectorProps) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
+  );
 }

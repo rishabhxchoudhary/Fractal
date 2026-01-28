@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    // await apiClient.logout();
+    await apiClient.logout();
     setState({
       user: null,
       workspaces: [],

@@ -1,29 +1,37 @@
-"use client"
+"use client";
 
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/auth-context"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2, ChevronRight, Plus } from "lucide-react"
-import type { Workspace } from "@/lib/types"
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Building2, ChevronRight, Plus } from "lucide-react";
+import type { Workspace } from "@/lib/types";
 
 export default function SelectWorkspacePage() {
-  const router = useRouter()
-  const { user, workspaces, setCurrentWorkspace, logout } = useAuth()
+  const router = useRouter();
+  const { user, workspaces, logout } = useAuth();
 
   const handleSelectWorkspace = (workspace: Workspace) => {
-    setCurrentWorkspace(workspace)
-    router.push("/dashboard")
-  }
+    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+    const protocol = window.location.protocol;
+    const targetUrl = `${protocol}//${workspace.slug}.${rootDomain}/dashboard`;
+    window.location.href = targetUrl;
+  };
 
   const handleCreateNew = () => {
-    router.push("/welcome/new-workspace")
-  }
+    router.push("/welcome/new-workspace");
+  };
 
   const handleLogout = async () => {
-    await logout()
-    router.push("/login")
-  }
+    await logout();
+    router.push("/login");
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
@@ -38,7 +46,9 @@ export default function SelectWorkspacePage() {
           </div>
           <div className="flex items-center gap-4">
             {user && (
-              <span className="text-sm text-muted-foreground">{user.email}</span>
+              <span className="text-sm text-muted-foreground">
+                {user.email}
+              </span>
             )}
             <Button variant="ghost" size="sm" onClick={handleLogout}>
               Sign out
@@ -105,5 +115,5 @@ export default function SelectWorkspacePage() {
         </div>
       </main>
     </div>
-  )
+  );
 }
