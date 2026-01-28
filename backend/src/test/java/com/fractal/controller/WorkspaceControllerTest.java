@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper; // Import ObjectMapper
-import com.fractal.backend.config.SecurityConfig;
+import com.fractal.backend.config.TestSecurityConfig;
 import com.fractal.backend.controller.WorkspaceController;
 import com.fractal.backend.dto.CreateWorkspaceRequest;
 import com.fractal.backend.model.User;
@@ -29,7 +29,7 @@ import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
 import com.fractal.backend.service.WorkspaceService;
 
 @WebMvcTest(WorkspaceController.class)
-@Import(SecurityConfig.class)
+@Import(TestSecurityConfig.class)
 class WorkspaceControllerTest {
 
     @Autowired
