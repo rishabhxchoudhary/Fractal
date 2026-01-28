@@ -400,37 +400,6 @@ spring.security.oauth2.client.registration.google.client-id=${GOOGLE_CLIENT_ID}
 spring.security.oauth2.client.registration.google.client-secret=${GOOGLE_CLIENT_SECRET}
 ```
 
-- in backend/src/test/java/com/fractal/FractalApplicationTests.java
-```
-package com.fractal;
-
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.test.web.servlet.MockMvc;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-
-@SpringBootTest
-@AutoConfigureMockMvc
-class FractalApplicationTests {
-
-    @Autowired
-    private MockMvc mockMvc; // This simulates sending an HTTP request
-
-    @Test
-    void shouldReturnSystemHealthy() throws Exception {
-        // We expect a GET request to "/api/health" to return 200 OK and "System Operational"
-        mockMvc.perform(get("/api/health"))
-                .andExpect(status().isOk())
-                .andExpect(content().string("System Operational"));
-    }
-}
-```
-
 Ran the test using `mvn test` command and it failed. 
 
 - in the backend/src/main/java/com/fractal/backend/controller/HealthCheckController.java
@@ -449,6 +418,50 @@ public class HealthCheckController {
     @GetMapping("/health")
     public String healthCheck() {
         return "System Operational";
+    }
+
+    @GetMapping("/protected")
+    public String protectedEndpoint() {
+        return "This is a protected resource.";
+    }
+}
+```
+
+- in the backend/src/test/java/com/fractal/controller/HealthCheckControllerTest.java
+```
+package com.fractal.controller;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fractal.backend.config.SecurityConfig;
+import com.fractal.backend.controller.HealthCheckController;
+
+@WebMvcTest(HealthCheckController.class) // Focus test on this controller
+@Import(SecurityConfig.class) // Import our new security config
+public class HealthCheckControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Test
+    void shouldAllowAccessToPublicHealthEndpoint() throws Exception {
+        mockMvc.perform(get("/api/health"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void shouldDenyAccessToProtectedEndpointWithoutAuth() throws Exception {
+        // When we access a protected endpoint without being logged in,
+        // Spring Security should redirect us to the login page.
+        // The HTTP status for a redirect is 302 (Found).
+        mockMvc.perform(get("/api/protected"))
+                .andExpect(status().isFound());
     }
 }
 ```
@@ -818,6 +831,8 @@ public class LoginResponse {
     }
 }
 ```
+
+created a project in google developer console called 'fractal',configured oauth concent screen, went to APIs & Services > Credentials and created oauth2 client added origin: http://localhost:8080 and redirect URI: http://localhost:8080/login/oauth2/code/google, added the credentials to .env in backend and frontend folder. 
 
 Till this point everything is done and implemented by me. i want your help after this point. 
 

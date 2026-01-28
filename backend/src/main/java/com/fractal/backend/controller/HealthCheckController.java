@@ -12,4 +12,9 @@ public class HealthCheckController {
     public String healthCheck() {
         return "System Operational";
     }
+
+    @GetMapping("/protected")
+    public String protectedEndpoint() {
+        return "This is a protected resource.";
+    }
 }
