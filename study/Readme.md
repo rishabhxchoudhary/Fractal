@@ -350,7 +350,7 @@ CREATE TABLE webhook_subscriptions (
 
 Steps:
 1. https://github.com/vercel/platforms cloned this repo in the /frontend folder. I am building a multi tenant application where each user can create his workspace, every work space will have its own subdomain... I also setup redis, i have KV_REST_API_URL, KV_REST_API_TOKEN from upstash.
-2. Create a home page and login I want to setup google oauth 2 for login. setup the backend in spring boot using TDD. the signup flow should be like notion/slack, where user must first create a workspace if he has not done yet, if he has multiple workspaces, he should select which one to go into. 
+
 - Created a spring initializer project with dependencies:
     Spring Web (For building REST APIs)
     Spring Data JPA (For database interaction)
@@ -379,12 +379,12 @@ services:
 
 in the src/main/resources/application.properties, added this config:
 ```
-spring.application.name=todo-backend
+spring.application.name=fractal
 
 # Database Configuration
-spring.datasource.url=jdbc:postgresql://localhost:5432/todo_db
-spring.datasource.username=todo_user
-spring.datasource.password=password
+spring.datasource.url=${DB_URL:jdbc:postgresql://localhost:5432/todo_db}
+spring.datasource.username=${DB_USERNAME:todo_user}
+spring.datasource.password=${DB_PASSWORD:password}
 
 # Flyway (Database Migration)
 spring.flyway.enabled=true
@@ -393,6 +393,11 @@ spring.flyway.baseline-on-migrate=true
 # JPA / Hibernate
 spring.jpa.hibernate.ddl-auto=validate
 spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+# OAuth2 Google Configuration (We will fill these later)
+spring.security.oauth2.client.registration.google.client-id=${GOOGLE_CLIENT_ID}
+spring.security.oauth2.client.registration.google.client-secret=${GOOGLE_CLIENT_SECRET}
 ```
 
 - in backend/src/test/java/com/fractal/FractalApplicationTests.java
@@ -448,3 +453,376 @@ public class HealthCheckController {
 }
 ```
 
+- in the backend/src/main/resources/db/migration/V1__init_schema.sql i have added:
+```
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS ltree;
+
+-- 1. USERS TABLE
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    full_name VARCHAR(100),
+    avatar_url TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. WORKSPACES TABLE
+CREATE TABLE workspaces (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id UUID REFERENCES users(id),
+    name VARCHAR(100) NOT NULL,
+    slug VARCHAR(100) UNIQUE,
+    plan_type VARCHAR(50) DEFAULT 'FREE',
+    stripe_customer_id VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. WORKSPACE MEMBERS
+CREATE TABLE workspace_members (
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) DEFAULT 'MEMBER',
+    joined_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (workspace_id, user_id)
+);
+
+-- 4. USER IDENTITIES (For OAuth)
+CREATE TABLE user_identities (
+    user_id UUID REFERENCES users(id),
+    provider VARCHAR(20), -- 'GOOGLE', 'GITHUB'
+    provider_id VARCHAR(255),
+    PRIMARY KEY (user_id, provider)
+);
+```
+
+- in the `backend/src/test/java/com/fractal/repository/UserRepositoryTest.java`
+```
+package com.fractal.repository;
+
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import com.fractal.backend.model.User;
+import com.fractal.backend.repository.UserRepository;
+
+@DataJpaTest
+@Testcontainers
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+public class UserRepositoryTest {
+
+    // This spins up a temporary Postgres DB in Docker just for this test
+    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:16"); // Or another version
+    
+    @Container
+    @ServiceConnection
+    private static final PostgreSQLContainer postgres = new PostgreSQLContainer(POSTGRES_IMAGE);
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Test
+    void shouldSaveAndFindUserByEmail() {
+        // Arrange
+        User newUser = new User();
+        newUser.setEmail("test@fractal.com");
+        newUser.setFullName("Test User");
+        
+        // Act
+        userRepository.save(newUser);
+        Optional<User> foundUser = userRepository.findByEmail("test@fractal.com");
+        
+        // Assert
+        assertThat(foundUser).isPresent();
+        assertThat(foundUser.get().getEmail()).isEqualTo("test@fractal.com");
+    }
+}
+```
+
+- in the `backend/src/main/java/com/fractal/backend/model/User.java`
+```
+package com.fractal.backend.model;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "users")
+@Data // Lombok: Generates Getters, Setters, toString, etc.
+@NoArgsConstructor
+public class User {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.AUTO)
+    private UUID id;
+
+    @Column(unique = true, nullable = false)
+    private String email;
+
+    @Column(name = "full_name")
+    private String fullName;
+
+    @Column(name = "avatar_url")
+    private String avatarUrl;
+
+    @Column(name = "is_active")
+    private boolean isActive = true;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private OffsetDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private OffsetDateTime updatedAt;
+}
+```
+
+- in the backend/src/main/java/com/fractal/backend/repository/UserRepository.java
+```
+package com.fractal.backend.repository;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import com.fractal.backend.model.User;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, UUID> {
+    // Spring Data JPA automatically writes the SQL for this based on the method name
+    Optional<User> findByEmail(String email);
+}
+```
+
+In pom.xml, i added:
+```
+        <dependency>
+            <groupId>io.github.cdimascio</groupId>
+            <artifactId>java-dotenv</artifactId>
+            <version>5.2.2</version>
+        </dependency>
+
+        <!-- Validation (e.g., @NotNull, @Email) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+```
+
+updated the backend/src/main/java/com/fractal/FractalApplication.java to use .env
+
+```
+package com.fractal;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+import io.github.cdimascio.dotenv.Dotenv;
+
+@SpringBootApplication
+public class FractalApplication {
+
+    public static void main(String[] args) {
+        Dotenv dotenv = Dotenv.configure()
+                .ignoreIfMissing() // Don't crash if file is missing (e.g., in Prod/Docker)
+                .load();
+        dotenv.entries().forEach(entry -> 
+            System.setProperty(entry.getKey(), entry.getValue())
+        );
+
+        SpringApplication.run(FractalApplication.class, args);
+    }
+}
+```
+
+- in the src/test/java/com/fractal/service/AuthServiceTest.java
+```
+package com.fractal.service;
+
+import com.fractal.backend.dto.LoginResponse;
+import com.fractal.backend.model.User;
+import com.fractal.backend.repository.UserRepository;
+import com.fractal.backend.service.AuthService;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class) // Enables Mockito for this test class
+class AuthServiceTest {
+
+    @Mock
+    private UserRepository userRepository;
+
+    @InjectMocks
+    private AuthService authService;
+
+    @Test
+    void login_ShouldCreateNewUser_WhenUserDoesNotExist() {
+        // Arrange
+        String email = "new@example.com";
+        String name = "New User";
+        String avatar = "http://avatar.url";
+
+        // Mock DB returning empty (User not found)
+        when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
+        
+        // Mock DB saving a user (return the user that was passed in)
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User u = invocation.getArgument(0);
+            u.setId(java.util.UUID.randomUUID()); // Simulate DB generating ID
+            return u;
+        });
+
+        // Act
+        LoginResponse response = authService.loginOrSignup(email, name, avatar);
+
+        // Assert
+        assertThat(response.getUser()).isNotNull();
+        assertThat(response.getUser().getEmail()).isEqualTo(email);
+        assertThat(response.getUser().getFullName()).isEqualTo(name);
+        assertThat(response.getWorkspaces()).isEmpty(); // New user has no workspaces
+
+        // Verify save was called exactly once
+        verify(userRepository, times(1)).save(any(User.class));
+    }
+
+    @Test
+    void login_ShouldReturnExistingUser_WhenUserExists() {
+        // Arrange
+        String email = "existing@example.com";
+        User existingUser = new User();
+        existingUser.setEmail(email);
+        existingUser.setFullName("Old Name");
+
+        // Mock DB finding the user
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(existingUser));
+
+        // Act
+        LoginResponse response = authService.loginOrSignup(email, "New Name", "avatar");
+
+        // Assert
+        assertThat(response.getUser()).isEqualTo(existingUser);
+        verify(userRepository, never()).save(any(User.class)); // Should NOT save again
+    }
+}
+```
+
+in backend/src/main/java/com/fractal/backend/service/AuthService.java
+```
+package com.fractal.backend.service;
+
+import com.fractal.backend.dto.LoginResponse;
+import com.fractal.backend.model.User;
+import com.fractal.backend.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+
+@Service
+@RequiredArgsConstructor // Lombok: Creates constructor for final fields (Injection)
+public class AuthService {
+
+    private final UserRepository userRepository;
+    
+    // We will inject WorkspaceRepository later when we build that part
+
+    @Transactional
+    public LoginResponse loginOrSignup(String email, String fullName, String avatarUrl) {
+        // 1. Try to find user
+        User user = userRepository.findByEmail(email)
+                .orElseGet(() -> {
+                    // 2. If not found, create new
+                    User newUser = new User();
+                    newUser.setEmail(email);
+                    newUser.setFullName(fullName);
+                    newUser.setAvatarUrl(avatarUrl);
+                    return userRepository.save(newUser);
+                });
+
+        // 3. TODO: Fetch workspaces for this user (Empty for now)
+        
+        return LoginResponse.builder()
+                .user(user)
+                .workspaces(new ArrayList<>()) 
+                .build();
+    }
+}
+```
+
+in backend/src/main/java/com/fractal/backend/dto/LoginResponse.java
+```
+package com.fractal.backend.dto;
+
+import java.util.List;
+import java.util.UUID;
+
+import com.fractal.backend.model.User;
+
+import lombok.Builder;
+import lombok.Data;
+
+// @Data generates getters, setters, toString, etc.
+// @Builder creates the builder pattern (e.g., LoginResponse.builder().user(u).build())
+@Data
+@Builder
+public class LoginResponse {
+    private User user;
+    private List<WorkspaceDTO> workspaces;
+
+    // We can define a "nested" DTO right inside here for convenience
+    @Data
+    @Builder
+    public static class WorkspaceDTO {
+        private UUID id;
+        private String name;
+        private String slug; // Good to send this to the frontend
+        private String role; // The role of the current user in this workspace
+    }
+}
+```
+
+Till this point everything is done and implemented by me. i want your help after this point. 
+
+
+2. Create a home page and login I want to setup google oauth 2 for login. setup the backend in spring boot using TDD. the signup flow should be like notion/slack, where user must first create a workspace if he has not done yet, if he has multiple workspaces, he should select which one to go into. not sure if its easier to use https://authjs.dev/getting-started/migrating-to-v5 ? as i want to allow preview deployements to also be able to log in when i host this on vercel. 
+
+
+this is my plan, i need to move to step 2. can you help me do it step by step. please go step by step and let me complete a step then move to the next step. I have never actually worked with JAVA before.  I also want to use .env file instead of hardcoding the credentials if possible as i am pushing these to github.
