@@ -1135,83 +1135,6 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
 
 created a project in google developer console called 'fractal',configured oauth concent screen, went to APIs & Services > Credentials and created oauth2 client added origin: http://localhost:8080 and redirect URI: http://localhost:8080/login/oauth2/code/google, added the credentials to .env in backend and frontend folder. 
 
-this is the middleware.ts 
-```
-import { type NextRequest, NextResponse } from 'next/server';
-import { rootDomain } from '@/lib/utils';
-
-function extractSubdomain(request: NextRequest): string | null {
-  const url = request.url;
-  const host = request.headers.get('host') || '';
-  const hostname = host.split(':')[0];
-
-  // Local development environment
-  if (url.includes('localhost') || url.includes('127.0.0.1')) {
-    // Try to extract subdomain from the full URL
-    const fullUrlMatch = url.match(/http:\/\/([^.]+)\.localhost/);
-    if (fullUrlMatch && fullUrlMatch[1]) {
-      return fullUrlMatch[1];
-    }
-
-    // Fallback to host header approach
-    if (hostname.includes('.localhost')) {
-      return hostname.split('.')[0];
-    }
-
-    return null;
-  }
-
-  // Production environment
-  const rootDomainFormatted = rootDomain.split(':')[0];
-
-  // Handle preview deployment URLs (tenant---branch-name.vercel.app)
-  if (hostname.includes('---') && hostname.endsWith('.vercel.app')) {
-    const parts = hostname.split('---');
-    return parts.length > 0 ? parts[0] : null;
-  }
-
-  // Regular subdomain detection
-  const isSubdomain =
-    hostname !== rootDomainFormatted &&
-    hostname !== `www.${rootDomainFormatted}` &&
-    hostname.endsWith(`.${rootDomainFormatted}`);
-
-  return isSubdomain ? hostname.replace(`.${rootDomainFormatted}`, '') : null;
-}
-
-export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const subdomain = extractSubdomain(request);
-
-  if (subdomain) {
-    // Block access to admin page from subdomains
-    if (pathname.startsWith('/admin')) {
-      return NextResponse.redirect(new URL('/', request.url));
-    }
-
-    // For the root path on a subdomain, rewrite to the subdomain page
-    if (pathname === '/') {
-      return NextResponse.rewrite(new URL(`/s/${subdomain}`, request.url));
-    }
-  }
-
-  // On the root domain, allow normal access
-  return NextResponse.next();
-}
-
-export const config = {
-  matcher: [
-    /*
-     * Match all paths except for:
-     * 1. /api routes
-     * 2. /_next (Next.js internals)
-     * 3. all root files inside /public (e.g. /favicon.ico)
-     */
-    '/((?!api|_next|[\\w-]+\\.\\w+).*)'
-  ]
-};
-```
-
 - in backend/src/main/java/com/fractal/backend/controller/WorkspaceController.java
 ```
 package com.fractal.backend.controller;
@@ -1703,6 +1626,82 @@ class WorkspaceServiceTest {
 
 
 
+this is the middleware.ts 
+```
+import { type NextRequest, NextResponse } from 'next/server';
+import { rootDomain } from '@/lib/utils';
+
+function extractSubdomain(request: NextRequest): string | null {
+  const url = request.url;
+  const host = request.headers.get('host') || '';
+  const hostname = host.split(':')[0];
+
+  // Local development environment
+  if (url.includes('localhost') || url.includes('127.0.0.1')) {
+    // Try to extract subdomain from the full URL
+    const fullUrlMatch = url.match(/http:\/\/([^.]+)\.localhost/);
+    if (fullUrlMatch && fullUrlMatch[1]) {
+      return fullUrlMatch[1];
+    }
+
+    // Fallback to host header approach
+    if (hostname.includes('.localhost')) {
+      return hostname.split('.')[0];
+    }
+
+    return null;
+  }
+
+  // Production environment
+  const rootDomainFormatted = rootDomain.split(':')[0];
+
+  // Handle preview deployment URLs (tenant---branch-name.vercel.app)
+  if (hostname.includes('---') && hostname.endsWith('.vercel.app')) {
+    const parts = hostname.split('---');
+    return parts.length > 0 ? parts[0] : null;
+  }
+
+  // Regular subdomain detection
+  const isSubdomain =
+    hostname !== rootDomainFormatted &&
+    hostname !== `www.${rootDomainFormatted}` &&
+    hostname.endsWith(`.${rootDomainFormatted}`);
+
+  return isSubdomain ? hostname.replace(`.${rootDomainFormatted}`, '') : null;
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const subdomain = extractSubdomain(request);
+
+  if (subdomain) {
+    // Block access to admin page from subdomains
+    if (pathname.startsWith('/admin')) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+
+    // For the root path on a subdomain, rewrite to the subdomain page
+    if (pathname === '/') {
+      return NextResponse.rewrite(new URL(`/s/${subdomain}`, request.url));
+    }
+  }
+
+  // On the root domain, allow normal access
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all paths except for:
+     * 1. /api routes
+     * 2. /_next (Next.js internals)
+     * 3. all root files inside /public (e.g. /favicon.ico)
+     */
+    '/((?!api|_next|[\\w-]+\\.\\w+).*)'
+  ]
+};
+```
 
 in frontend/app/page.tsx
 ```
@@ -1776,7 +1775,7 @@ Till this point everything is done and implemented by me. i want your help after
 Run spring boot using: ./mvnw spring-boot:run
 
 
-2. Create a home page and login I want to setup google oauth 2 for login. setup the backend in spring boot using TDD. the signup flow should be like notion/slack, where user must first create a workspace if he has not done yet, if he has multiple workspaces, he should select which one to go into. not sure if its easier to use https://authjs.dev/getting-started/migrating-to-v5 ? as i want to allow preview deployements to also be able to log in when i host this on vercel. 
+2. Create a home page and login I want to setup google oauth 2 for login. I have setup the backend in spring boot using TDD. the signup flow should be like notion/slack, where user must first create a workspace if he has not done yet, if he has multiple workspaces, he should select which one to go into. not sure if its easier to use https://authjs.dev/getting-started/migrating-to-v5 ? as i want to allow preview deployements to also be able to log in when i host this on vercel. also this is multitenant architecture.. so basically the user will go to workspace-name.domain.com.. You can use any frontend library for this. 
 
 
 this is my plan, i need to move to step 2. can you help me do it step by step. please go step by step and let me complete a step then move to the next step. I have never actually worked with JAVA before.  I also want to use .env file instead of hardcoding the credentials if possible as i am pushing these to github.
