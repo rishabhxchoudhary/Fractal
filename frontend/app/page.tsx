@@ -1,21 +1,34 @@
+"use client"
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import { Loader2 } from "lucide-react"
+
 export default function HomePage() {
-  // We read the environment variable to build the full backend URL.
-  const backendUrl = `${process.env.NEXT_PUBLIC_API_URL}/oauth2/authorization/google`;
+  const router = useRouter()
+  const { isAuthenticated, isLoading, workspaces } = useAuth()
+
+  useEffect(() => {
+    if (!isLoading) {
+      if (!isAuthenticated) {
+        router.push("/login")
+      } else if (workspaces.length === 0) {
+        router.push("/welcome/new-workspace")
+      } else if (workspaces.length === 1) {
+        router.push("/dashboard")
+      } else {
+        router.push("/select-workspace")
+      }
+    }
+  }, [isAuthenticated, isLoading, workspaces, router])
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Fractal</h1>
-        <p className="mb-6 text-lg text-gray-600">
-          Your new feature-rich Todo List application.
-        </p>
-        <a
-          href={backendUrl}
-          className="inline-block rounded-md bg-blue-600 px-6 py-3 font-semibold text-white shadow-md transition-transform duration-200 hover:scale-105"
-        >
-          Sign in with Google
-        </a>
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center space-y-4">
+        <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     </div>
-  );
+  )
 }

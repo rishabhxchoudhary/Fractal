@@ -1,29 +1,51 @@
-import type { Metadata } from 'next';
-import { Geist } from 'next/font/google';
-import { SpeedInsights } from '@vercel/speed-insights/next';
-import './globals.css';
+import React from "react"
+import type { Metadata } from "next"
+import { Geist, Geist_Mono } from "next/font/google"
+import { Analytics } from "@vercel/analytics/next"
+import { AuthProvider } from "@/lib/auth-context"
+import { Toaster } from "@/components/ui/sonner"
+import "./globals.css"
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin']
-});
+const _geist = Geist({ subsets: ["latin"] })
+const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: 'Platforms Starter Kit',
-  description: 'Next.js template for building a multi-tenant SaaS.'
-};
+  title: "TaskFlow - Advanced Todo List",
+  description: "A Notion-style workspace for managing your tasks and projects",
+  generator: "v0.app",
+  icons: {
+    icon: [
+      {
+        url: "/icon-light-32x32.png",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: "/icon-dark-32x32.png",
+        media: "(prefers-color-scheme: dark)",
+      },
+      {
+        url: "/icon.svg",
+        type: "image/svg+xml",
+      },
+    ],
+    apple: "/apple-icon.png",
+  },
+}
 
 export default function RootLayout({
-  children
+  children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: React.ReactNode
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} antialiased`}>
-        {children}
-        <SpeedInsights />
+      <body className="font-sans antialiased">
+        <AuthProvider>
+          {children}
+          <Toaster />
+        </AuthProvider>
+        <Analytics />
       </body>
     </html>
-  );
+  )
 }

@@ -864,11 +864,17 @@ public class LoginResponse {
 ```
 package com.fractal.backend.config;
 
+import java.util.Arrays;
+import java.util.List;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
 
@@ -885,9 +891,15 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                // 0. Enable CORS
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 // 1. Authorize Requests
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/health").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/api/**").permitAll() // Allow
+                                                                                                             // OPTIONS
+                                                                                                             // for CORS
+                                                                                                             // preflight
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 // 2. Configure OAuth2 Login
@@ -897,6 +909,18 @@ public class SecurityConfig {
                 });
 
         return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(List.of("http://localhost:3000")); // Allow your frontend origin
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*")); // Allow all headers
+        configuration.setAllowCredentials(true); // Allow credentials (cookies, authorization headers)
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", configuration); // Apply CORS to /api paths
+        return source;
     }
 }
 ```
@@ -908,11 +932,9 @@ package com.fractal.backend.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-@EnableWebMvc
 public class WebConfig implements WebMvcConfigurer {
 
     @Value("${app.frontend.url}")
@@ -1626,6 +1648,374 @@ class WorkspaceServiceTest {
 
 
 
+google login is working. 
+
+this is the current file structure is frontend
+.
+├── app
+│   ├── auth
+│   │   └── callback
+│   │       ├── loading.tsx
+│   │       └── page.tsx
+│   ├── dashboard
+│   │   └── page.tsx
+│   ├── globals.css
+│   ├── layout.tsx
+│   ├── login
+│   │   └── page.tsx
+│   ├── page.tsx
+│   ├── select-workspace
+│   │   └── page.tsx
+│   └── welcome
+│       └── new-workspace
+│           └── page.tsx
+├── bun.lock
+├── components
+│   ├── auth
+│   │   └── login-form.tsx
+│   ├── dashboard
+│   │   ├── dashboard-content.tsx
+│   │   └── dashboard-layout.tsx
+│   ├── theme-provider.tsx
+│   ├── ui
+│   │   ├── accordion.tsx
+│   │   ├── alert-dialog.tsx
+│   │   ├── alert.tsx
+│   │   ├── aspect-ratio.tsx
+│   │   ├── avatar.tsx
+│   │   ├── badge.tsx
+│   │   ├── breadcrumb.tsx
+│   │   ├── button-group.tsx
+│   │   ├── button.tsx
+│   │   ├── calendar.tsx
+│   │   ├── card.tsx
+│   │   ├── carousel.tsx
+│   │   ├── chart.tsx
+│   │   ├── checkbox.tsx
+│   │   ├── collapsible.tsx
+│   │   ├── command.tsx
+│   │   ├── context-menu.tsx
+│   │   ├── dialog.tsx
+│   │   ├── drawer.tsx
+│   │   ├── dropdown-menu.tsx
+│   │   ├── empty.tsx
+│   │   ├── field.tsx
+│   │   ├── form.tsx
+│   │   ├── hover-card.tsx
+│   │   ├── input-group.tsx
+│   │   ├── input-otp.tsx
+│   │   ├── input.tsx
+│   │   ├── item.tsx
+│   │   ├── kbd.tsx
+│   │   ├── label.tsx
+│   │   ├── menubar.tsx
+│   │   ├── navigation-menu.tsx
+│   │   ├── pagination.tsx
+│   │   ├── popover.tsx
+│   │   ├── progress.tsx
+│   │   ├── radio-group.tsx
+│   │   ├── resizable.tsx
+│   │   ├── scroll-area.tsx
+│   │   ├── select.tsx
+│   │   ├── separator.tsx
+│   │   ├── sheet.tsx
+│   │   ├── sidebar.tsx
+│   │   ├── skeleton.tsx
+│   │   ├── slider.tsx
+│   │   ├── sonner.tsx
+│   │   ├── spinner.tsx
+│   │   ├── switch.tsx
+│   │   ├── table.tsx
+│   │   ├── tabs.tsx
+│   │   ├── textarea.tsx
+│   │   ├── toast.tsx
+│   │   ├── toaster.tsx
+│   │   ├── toggle-group.tsx
+│   │   ├── toggle.tsx
+│   │   ├── tooltip.tsx
+│   │   ├── use-mobile.tsx
+│   │   └── use-toast.ts
+│   └── workspace
+│       └── workspace-selector.tsx
+├── components.json
+├── hooks
+│   ├── use-mobile.ts
+│   └── use-toast.ts
+├── lib
+│   ├── api.ts
+│   ├── auth-context.tsx
+│   ├── types.ts
+│   └── utils.ts
+├── next-env.d.ts
+├── next.config.mjs
+├── package.json
+├── pnpm-lock.yaml
+├── postcss.config.mjs
+├── public
+│   ├── apple-icon.png
+│   ├── icon-dark-32x32.png
+│   ├── icon-light-32x32.png
+│   ├── icon.svg
+│   ├── placeholder-logo.png
+│   ├── placeholder-logo.svg
+│   ├── placeholder-user.jpg
+│   ├── placeholder.jpg
+│   └── placeholder.svg
+├── styles
+│   └── globals.css
+└── tsconfig.json
+
+This is the authContext:
+```
+"use client"
+
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react"
+import { apiClient } from "./api"
+import type { User, Workspace, AuthState } from "./types"
+
+interface AuthContextType extends AuthState {
+  login: () => void
+  logout: () => Promise<void>
+  setCurrentWorkspace: (workspace: Workspace) => void
+  refreshWorkspaces: () => Promise<void>
+  handleAuthCallback: (code: string) => Promise<{ redirectUrl: string }>
+}
+
+const AuthContext = createContext<AuthContextType | null>(null)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<AuthState>({
+    user: null,
+    workspaces: [],
+    currentWorkspace: null,
+    isLoading: true,
+    isAuthenticated: false,
+  })
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const [user, workspaces] = await Promise.all([
+        apiClient.getCurrentUser(),
+        apiClient.getUserWorkspaces(),
+      ])
+      setState((prev) => ({
+        ...prev,
+        user,
+        workspaces,
+        isAuthenticated: true,
+        isLoading: false,
+      }))
+    } catch {
+      setState((prev) => ({
+        ...prev,
+        user: null,
+        workspaces: [],
+        isAuthenticated: false,
+        isLoading: false,
+      }))
+    }
+  }, [])
+
+  useEffect(() => {
+    if (apiClient.isAuthenticated()) {
+      refreshUser()
+    } else {
+      setState((prev) => ({ ...prev, isLoading: false }))
+    }
+  }, [refreshUser])
+
+  const login = useCallback(() => {
+    window.location.href = apiClient.getGoogleAuthUrl()
+  }, [])
+
+  const logout = useCallback(async () => {
+    await apiClient.logout()
+    setState({
+      user: null,
+      workspaces: [],
+      currentWorkspace: null,
+      isLoading: false,
+      isAuthenticated: false,
+    })
+  }, [])
+
+  const setCurrentWorkspace = useCallback((workspace: Workspace) => {
+    setState((prev) => ({ ...prev, currentWorkspace: workspace }))
+    if (typeof window !== "undefined") {
+      localStorage.setItem("currentWorkspaceId", workspace.id)
+    }
+  }, [])
+
+  const refreshWorkspaces = useCallback(async () => {
+    const workspaces = await apiClient.getUserWorkspaces()
+    setState((prev) => ({ ...prev, workspaces }))
+  }, [])
+
+  const handleAuthCallback = useCallback(async (code: string) => {
+    const response = await apiClient.handleOAuthCallback(code)
+    setState((prev) => ({
+      ...prev,
+      user: response.user,
+      workspaces: response.workspaces,
+      isAuthenticated: true,
+      isLoading: false,
+    }))
+    return { redirectUrl: response.redirectUrl }
+  }, [])
+
+  return (
+    <AuthContext.Provider
+      value={{
+        ...state,
+        login,
+        logout,
+        setCurrentWorkspace,
+        refreshWorkspaces,
+        handleAuthCallback,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider")
+  }
+  return context
+}
+```
+
+```
+import type {
+  LoginResponse,
+  CreateWorkspaceRequest,
+  CreateWorkspaceResponse,
+  User,
+  Workspace,
+} from "./types"
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+
+class ApiClient {
+  private accessToken: string | null = null
+
+  setAccessToken(token: string | null) {
+    this.accessToken = token
+    if (token) {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("accessToken", token)
+      }
+    } else {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("accessToken")
+      }
+    }
+  }
+
+  getAccessToken(): string | null {
+    if (this.accessToken) return this.accessToken
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("accessToken")
+    }
+    return null
+  }
+
+  private async fetch<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const token = this.getAccessToken()
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+      ...options.headers,
+    }
+
+    if (token) {
+      ;(headers as Record<string, string>)["Authorization"] = `Bearer ${token}`
+    }
+
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.message || `API Error: ${response.status}`)
+    }
+
+    return response.json()
+  }
+
+  // Auth endpoints
+  getGoogleAuthUrl(): string {
+    const redirectUri = typeof window !== "undefined" 
+      ? `${window.location.origin}/auth/callback`
+      : ""
+    return `${API_BASE_URL}/oauth2/authorization/google?redirect_uri=${encodeURIComponent(redirectUri)}`
+  }
+
+  async handleOAuthCallback(code: string): Promise<LoginResponse> {
+    const response = await this.fetch<LoginResponse>("/api/auth/oauth/callback", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    })
+    this.setAccessToken(response.accessToken)
+    return response
+  }
+
+  async getCurrentUser(): Promise<User> {
+    return this.fetch<User>("/api/auth/me")
+  }
+
+  async getUserWorkspaces(): Promise<Workspace[]> {
+    return this.fetch<Workspace[]>("/api/workspaces")
+  }
+
+  async createWorkspace(
+    data: CreateWorkspaceRequest
+  ): Promise<CreateWorkspaceResponse> {
+    return this.fetch<CreateWorkspaceResponse>("/api/workspaces", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await this.fetch("/api/auth/logout", { method: "POST" })
+    } finally {
+      this.setAccessToken(null)
+    }
+  }
+
+  // Check if user is authenticated
+  isAuthenticated(): boolean {
+    return !!this.getAccessToken()
+  }
+}
+
+export const apiClient = new ApiClient()
+```
+
+Till this point everything is done and implemented by me. i want your help after this point. 
+
+Run spring boot using: ./mvnw spring-boot:run
+
+2. Create a home page and login I want to setup google oauth 2 for login. I have setup the backend in spring boot using TDD. the signup flow should be like notion/slack, where user must first create a workspace if he has not done yet, if he has multiple workspaces, as i want to allow preview deployements to also be able to log in when i host this on vercel. also this is multitenant architecture.. so basically the user will go to workspace-name.domain.com.. You can use any component library for this. 
+
+i found this on github, maybe it will be helpful:
 this is the middleware.ts 
 ```
 import { type NextRequest, NextResponse } from 'next/server';
@@ -1703,79 +2093,5 @@ export const config = {
 };
 ```
 
-in frontend/app/page.tsx
-```
-export default function HomePage() {
-  // We read the environment variable to build the full backend URL.
-  const backendUrl = `${process.env.NEXT_PUBLIC_API_URL}/oauth2/authorization/google`;
-
-  return (
-    <div className="flex h-screen w-screen items-center justify-center">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Fractal</h1>
-        <p className="mb-6 text-lg text-gray-600">
-          Your new feature-rich Todo List application.
-        </p>
-        <a
-          href={backendUrl}
-          className="inline-block rounded-md bg-blue-600 px-6 py-3 font-semibold text-white shadow-md transition-transform duration-200 hover:scale-105"
-        >
-          Sign in with Google
-        </a>
-      </div>
-    </div>
-  );
-}
-```
-
-google login is working. 
-
-this is the current file structure is frontend
-.
-├── README.md
-├── app
-│   ├── actions.ts
-│   ├── admin
-│   │   ├── dashboard.tsx
-│   │   └── page.tsx
-│   ├── favicon.ico
-│   ├── globals.css
-│   ├── layout.tsx
-│   ├── not-found.tsx
-│   ├── page.tsx
-│   ├── s
-│   │   └── [subdomain]
-│   │       └── page.tsx
-│   └── subdomain-form.tsx
-├── bun.lock
-├── components
-│   └── ui
-│       ├── button.tsx
-│       ├── card.tsx
-│       ├── dialog.tsx
-│       ├── emoji-picker.tsx
-│       ├── input.tsx
-│       ├── label.tsx
-│       └── popover.tsx
-├── components.json
-├── lib
-│   ├── redis.ts
-│   ├── subdomains.ts
-│   └── utils.ts
-├── middleware.ts
-├── next-env.d.ts
-├── next.config.ts
-├── package.json
-├── pnpm-lock.yaml
-├── postcss.config.mjs
-├── tsconfig.json
-
-Till this point everything is done and implemented by me. i want your help after this point. 
-
-Run spring boot using: ./mvnw spring-boot:run
-
-
-2. Create a home page and login I want to setup google oauth 2 for login. I have setup the backend in spring boot using TDD. the signup flow should be like notion/slack, where user must first create a workspace if he has not done yet, if he has multiple workspaces, he should select which one to go into. not sure if its easier to use https://authjs.dev/getting-started/migrating-to-v5 ? as i want to allow preview deployements to also be able to log in when i host this on vercel. also this is multitenant architecture.. so basically the user will go to workspace-name.domain.com.. You can use any frontend library for this. 
-
-
+as you can see the backend is still not ready for auth. this is my step2 to complete the backend and frontend till this point. 
 this is my plan, i need to move to step 2. can you help me do it step by step. please go step by step and let me complete a step then move to the next step. I have never actually worked with JAVA before.  I also want to use .env file instead of hardcoding the credentials if possible as i am pushing these to github.
