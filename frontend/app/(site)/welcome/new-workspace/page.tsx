@@ -129,10 +129,10 @@ export default function NewWorkspacePage() {
                       Workspace URL
                     </Label>
                     <div className="flex items-center gap-0 rounded-md border bg-muted/50 px-3 py-2">
-                      <span className="text-sm text-muted-foreground">
-                        taskflow.app/
-                      </span>
                       <span className="text-sm font-medium">{slug}</span>
+                      <span className="text-sm text-muted-foreground">
+                        .{window.location.host}
+                      </span>
                     </div>
                   </div>
                 )}
