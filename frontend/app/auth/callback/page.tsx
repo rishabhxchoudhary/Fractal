@@ -1,68 +1,76 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@/lib/auth-context"
-import { Loader2 } from "lucide-react"
+import { useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { apiClient } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
-export default function AuthCallbackPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const { handleAuthCallback } = useAuth()
-  const [error, setError] = useState<string | null>(null)
+function AuthCallbackContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const processedRef = useRef(false);
 
   useEffect(() => {
-    const processCallback = async () => {
-      const code = searchParams.get("code")
-      const errorParam = searchParams.get("error")
+    const processLogin = async () => {
+      // Prevent double execution in React Strict Mode
+      if (processedRef.current) return;
+      processedRef.current = true;
 
-      if (errorParam) {
-        setError(errorParam)
-        return
-      }
+      // 1. Check for the token we sent from the backend
+      const token = searchParams.get("token");
 
-      if (!code) {
-        setError("No authorization code received")
-        return
+      if (!token) {
+        // If we still have the old "error" param or no token
+        const error = searchParams.get("error");
+        console.error("Auth Error:", error || "No token found");
+        router.push("/login?error=" + (error || "no_token"));
+        return;
       }
 
       try {
-        const { redirectUrl } = await handleAuthCallback(code)
-        router.push(redirectUrl || "/dashboard")
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Authentication failed")
+        // 2. Set the token in our API client (saves to localStorage)
+        apiClient.setAccessToken(token);
+
+        // 3. Force a reload of the user state or just redirect
+        // We will fetch the user data to decide routing
+        // (Note: This call will fail until we do Step 2 below, but that's okay for now)
+        try {
+          const workspaces = await apiClient.getUserWorkspaces();
+
+          if (workspaces.length === 0) {
+            router.replace("/welcome/new-workspace");
+          } else {
+            router.replace("/dashboard");
+          }
+        } catch (e) {
+          // If fetching fails, we default to dashboard or new-workspace
+          // This allows us to proceed even if the /me endpoint isn't ready
+          console.warn("Could not fetch workspaces, redirecting to default", e);
+          router.replace("/dashboard");
+        }
+      } catch (error) {
+        console.error("Failed to process login", error);
+        router.push("/login?error=auth_failed");
       }
-    }
+    };
 
-    processCallback()
-  }, [searchParams, handleAuthCallback, router])
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
-        <div className="text-center space-y-4 max-w-md">
-          <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto">
-            <span className="text-destructive text-xl">!</span>
-          </div>
-          <h1 className="text-2xl font-semibold">Authentication Failed</h1>
-          <p className="text-muted-foreground">{error}</p>
-          <button
-            onClick={() => router.push("/login")}
-            className="text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground"
-          >
-            Return to login
-          </button>
-        </div>
-      </div>
-    )
-  }
+    processLogin();
+  }, [router, searchParams]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background">
-      <div className="text-center space-y-4">
-        <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
-        <p className="text-muted-foreground">Completing sign in...</p>
+    <div className="flex h-screen w-full items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-muted-foreground">Authenticating...</p>
       </div>
     </div>
-  )
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <AuthCallbackContent />
+    </Suspense>
+  );
 }

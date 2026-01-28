@@ -8,11 +8,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
+import com.fractal.backend.security.JwtAuthenticationFilter;
 
 import lombok.RequiredArgsConstructor;
 
@@ -23,12 +25,14 @@ public class SecurityConfig {
 
     // Inject your custom success handler
     private final CustomOAuth2AuthenticationSuccessHandler customOAuth2AuthenticationSuccessHandler;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 // 0. Enable CORS
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
                 // 1. Authorize Requests
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/health").permitAll()
@@ -42,7 +46,9 @@ public class SecurityConfig {
                 .oauth2Login(oauth2 -> {
                     // Tell Spring Security to use your custom success handler
                     oauth2.successHandler(customOAuth2AuthenticationSuccessHandler);
-                });
+                })
+
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

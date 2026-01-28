@@ -1,5 +1,6 @@
 package com.fractal.controller;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,6 +15,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -22,6 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper; // Import ObjectMapper
 import com.fractal.backend.config.TestSecurityConfig;
 import com.fractal.backend.controller.WorkspaceController;
 import com.fractal.backend.dto.CreateWorkspaceRequest;
+import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.model.Workspace;
 import com.fractal.backend.repository.UserRepository;
@@ -77,12 +81,43 @@ class WorkspaceControllerTest {
         // Act & Assert
         mockMvc.perform(post("/api/workspaces")
                 .with(oauth2Login().attributes(attrs -> attrs.put("email", email)))
-                .with(csrf()) 
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))) // Use the manual instance
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value(workspaceName))
                 .andExpect(jsonPath("$.slug").value("my-new-company"))
                 .andExpect(jsonPath("$.role").value("OWNER"));
+    }
+
+    @Test
+    void getUserWorkspaces_ShouldReturnList() throws Exception {
+        // Arrange
+        UUID userId = UUID.randomUUID();
+        User mockUser = new User();
+        mockUser.setId(userId);
+        mockUser.setEmail("test@fractal.com");
+
+        WorkspaceResponse ws1 = WorkspaceResponse.builder()
+                .id(UUID.randomUUID()).name("WS 1").slug("ws-1").role("OWNER").build();
+
+        // Mock the user finding (needed for the filter to set the
+        // @AuthenticationPrincipal)
+        when(userRepository.findByEmail("test@fractal.com")).thenReturn(Optional.of(mockUser));
+
+        // Mock the service call
+        when(workspaceService.getWorkspacesForUser(userId)).thenReturn(List.of(ws1));
+
+        // Act & Assert
+        mockMvc.perform(get("/api/workspaces")
+                // We simulate the JWT auth by mocking the OAuth2 user,
+                // OR if you are using the new JWT filter in tests, you might need to mock that
+                // behavior.
+                // For this WebMvcTest, simply injecting the user via security context is
+                // easiest:
+                .with(oauth2Login().attributes(attrs -> attrs.put("email", "test@fractal.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("WS 1"))
+                .andExpect(jsonPath("$[0].role").value("OWNER"));
     }
 }

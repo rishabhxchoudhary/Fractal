@@ -49,7 +49,7 @@ class ApiClient {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
-      credentials: "include",
+      credentials: "omit",
     })
 
     if (!response.ok) {

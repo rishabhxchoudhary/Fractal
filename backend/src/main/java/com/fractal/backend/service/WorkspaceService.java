@@ -1,13 +1,16 @@
 package com.fractal.backend.service;
 
 import java.text.Normalizer;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.Workspace;
 import com.fractal.backend.model.WorkspaceMember;
 import com.fractal.backend.repository.WorkspaceMemberRepository;
@@ -29,7 +32,7 @@ public class WorkspaceService {
     public Workspace createWorkspace(UUID userId, String name) {
         // 1. Generate a slug (URL friendly version of name)
         String slug = toSlug(name);
-        
+
         // 2. Ensure slug uniqueness (simple append strategy)
         String originalSlug = slug;
         int count = 1;
@@ -45,7 +48,7 @@ public class WorkspaceService {
                 .slug(slug)
                 .planType("FREE")
                 .build();
-        
+
         Workspace savedWorkspace = workspaceRepository.save(workspace);
 
         // 4. Add Creator as OWNER
@@ -54,7 +57,7 @@ public class WorkspaceService {
                 .userId(userId)
                 .role("OWNER")
                 .build();
-        
+
         workspaceMemberRepository.save(member);
 
         return savedWorkspace;
@@ -67,4 +70,27 @@ public class WorkspaceService {
         String slug = NONLATIN.matcher(normalized).replaceAll("");
         return slug.toLowerCase(Locale.ENGLISH);
     }
+
+    public List<WorkspaceResponse> getWorkspacesForUser(UUID userId) {
+        // 1. Find all memberships for this user
+        List<WorkspaceMember> memberships = workspaceMemberRepository.findAllByUserId(userId);
+
+        // 2. For each membership, fetch the Workspace details and map to DTO
+        return memberships.stream()
+                .map(member -> {
+                    Workspace w = workspaceRepository.findById(member.getWorkspaceId()).orElse(null);
+                    if (w == null)
+                        return null;
+
+                    return WorkspaceResponse.builder()
+                            .id(w.getId())
+                            .name(w.getName())
+                            .slug(w.getSlug())
+                            .role(member.getRole())
+                            .build();
+                })
+                .filter(response -> response != null) // Filter out any nulls if workspace wasn't found
+                .collect(Collectors.toList());
+    }
+
 }

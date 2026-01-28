@@ -3,6 +3,8 @@ package com.fractal.backend.security;
 import com.fractal.backend.dto.LoginResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.service.AuthService;
+import com.fractal.backend.service.JwtService;
+
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -24,6 +26,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,6 +42,9 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
     @Mock
     private HttpServletResponse response;
 
+    @Mock
+    private JwtService jwtService;
+
     @InjectMocks
     private CustomOAuth2AuthenticationSuccessHandler successHandler;
 
@@ -46,14 +53,14 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
 
     @BeforeEach
     void setUp() {
-        // Manually set the frontendUrl field since @Value won't work in a plain Mockito test
+        // Manually set the frontendUrl field since @Value won't work in a plain Mockito
+        // test
         ReflectionTestUtils.setField(successHandler, "frontendUrl", frontendUrl);
 
         Map<String, Object> attributes = Map.of(
-            "email", "test.user@google.com",
-            "name", "Test User",
-            "picture", "http://example.com/avatar.jpg"
-        );
+                "email", "test.user@google.com",
+                "name", "Test User",
+                "picture", "http://example.com/avatar.jpg");
         oAuth2User = new DefaultOAuth2User(Collections.emptyList(), attributes, "email");
     }
 
@@ -68,21 +75,22 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
                 .user(user)
                 .workspaces(new ArrayList<>()) // No workspaces
                 .build();
-        
+
         when(authService.loginOrSignup(anyString(), anyString(), anyString())).thenReturn(loginResponse);
+        when(jwtService.generateToken(anyString())).thenReturn("mock-jwt-token");
 
         // --- Act ---
         successHandler.onAuthenticationSuccess(request, response, token);
 
         // --- Assert ---
         verify(authService).loginOrSignup(
-            "test.user@google.com", 
-            "Test User", 
-            "http://example.com/avatar.jpg"
-        );
+                "test.user@google.com",
+                "Test User",
+                "http://example.com/avatar.jpg");
 
         // Verify that the redirect goes to the "new workspace" page
-        verify(response).sendRedirect(frontendUrl + "/welcome/new-workspace"); 
+        verify(response).sendRedirect(contains("token=mock-jwt-token"));
+        verify(response).sendRedirect(frontendUrl + "/auth/callback?token=mock-jwt-token");
     }
 
     @Test
@@ -92,34 +100,32 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
 
         User user = new User();
         user.setEmail("test.user@google.com");
-        
+
         // Simulate a user that has an existing workspace
         List<LoginResponse.WorkspaceDTO> workspaces = List.of(
-            LoginResponse.WorkspaceDTO.builder()
-                .id(UUID.randomUUID())
-                .name("My Workspace")
-                .slug("my-workspace")
-                .role("OWNER")
-                .build()
-        );
+                LoginResponse.WorkspaceDTO.builder()
+                        .id(UUID.randomUUID())
+                        .name("My Workspace")
+                        .slug("my-workspace")
+                        .role("OWNER")
+                        .build());
         LoginResponse loginResponse = LoginResponse.builder()
                 .user(user)
                 .workspaces(workspaces)
                 .build();
-        
+
         when(authService.loginOrSignup(anyString(), anyString(), anyString())).thenReturn(loginResponse);
+        when(jwtService.generateToken(anyString())).thenReturn("mock-jwt-token");
 
         // --- Act ---
         successHandler.onAuthenticationSuccess(request, response, token);
 
         // --- Assert ---
         verify(authService).loginOrSignup(
-            "test.user@google.com", 
-            "Test User", 
-            "http://example.com/avatar.jpg"
-        );
+                "test.user@google.com",
+                "Test User",
+                "http://example.com/avatar.jpg");
 
-        // Verify that the redirect goes to the dashboard
-        verify(response).sendRedirect(frontendUrl + "/dashboard"); 
+        verify(response).sendRedirect(frontendUrl + "/auth/callback?token=mock-jwt-token");
     }
 }
