@@ -76,6 +76,8 @@ A comprehensive and well-structured plan for a feature-rich Todo List applicatio
 *   **Authentication:** OAuth 2.0 with Google Sign-In as the initial provider.
 *   **Database Hosting:** AWS RDS for PostgreSQL.
 *   **Cold Start Mitigation:** AWS SnapStart will be used to reduce cold start times for Lambda functions.
+- using redis for cacheing. 
+- use flyway for database migrations
 
 ### **Database Schema Design**
 
@@ -347,4 +349,102 @@ CREATE TABLE webhook_subscriptions (
 ```
 
 Steps:
-1. https://github.com/vercel/platforms cloned this repo in the frontend folder. I am building a multi tenant application where each user can create his workspace, every work space will have its own subdomain. 
+1. https://github.com/vercel/platforms cloned this repo in the /frontend folder. I am building a multi tenant application where each user can create his workspace, every work space will have its own subdomain... I also setup redis, i have KV_REST_API_URL, KV_REST_API_TOKEN from upstash.
+2. Create a home page and login I want to setup google oauth 2 for login. setup the backend in spring boot using TDD. the signup flow should be like notion/slack, where user must first create a workspace if he has not done yet, if he has multiple workspaces, he should select which one to go into. 
+- Created a spring initializer project with dependencies:
+    Spring Web (For building REST APIs)
+    Spring Data JPA (For database interaction)
+    PostgreSQL Driver (Connects to Postgres)
+    Flyway Migration (Database version control)
+    Lombok (Reduces code boilerplate)
+    Spring Security (Authentication foundation)
+    OAuth2 Client (For Google Login)
+    Testcontainers (For running real DBs in tests - crucial for TDD)
+- put it in /backend folder
+- created docker-compose.yml with this content:
+```
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: todo_postgres
+    environment:
+      POSTGRES_DB: todo_db
+      POSTGRES_USER: todo_user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+```
+- open a separate terminal in backend folder and `docker-compose up -d`
+
+in the src/main/resources/application.properties, added this config:
+```
+spring.application.name=todo-backend
+
+# Database Configuration
+spring.datasource.url=jdbc:postgresql://localhost:5432/todo_db
+spring.datasource.username=todo_user
+spring.datasource.password=password
+
+# Flyway (Database Migration)
+spring.flyway.enabled=true
+spring.flyway.baseline-on-migrate=true
+
+# JPA / Hibernate
+spring.jpa.hibernate.ddl-auto=validate
+spring.jpa.show-sql=true
+```
+
+- in backend/src/test/java/com/fractal/FractalApplicationTests.java
+```
+package com.fractal;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+
+@SpringBootTest
+@AutoConfigureMockMvc
+class FractalApplicationTests {
+
+    @Autowired
+    private MockMvc mockMvc; // This simulates sending an HTTP request
+
+    @Test
+    void shouldReturnSystemHealthy() throws Exception {
+        // We expect a GET request to "/api/health" to return 200 OK and "System Operational"
+        mockMvc.perform(get("/api/health"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("System Operational"));
+    }
+}
+```
+
+Ran the test using `mvn test` command and it failed. 
+
+- in the backend/src/main/java/com/fractal/backend/controller/HealthCheckController.java
+add this:
+```
+package com.fractal.backend.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api")
+public class HealthCheckController {
+
+    @GetMapping("/health")
+    public String healthCheck() {
+        return "System Operational";
+    }
+}
+```
+
