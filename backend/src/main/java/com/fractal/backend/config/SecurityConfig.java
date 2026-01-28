@@ -59,7 +59,9 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(List.of(
                 "http://localhost:3000", // Keep localhost for safety
                 "http://lvh.me:3000", // Main domain
-                "http://*.lvh.me:3000" // All subdomains
+                "http://*.lvh.me:3000", // All subdomains,
+                "https://app.rishabhxchoudhary.com",
+                "https://*.app.rishabhxchoudhary.com"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*")); // Allow all headers
