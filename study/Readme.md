@@ -437,19 +437,26 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fractal.backend.config.SecurityConfig;
 import com.fractal.backend.controller.HealthCheckController;
+import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
 
-@WebMvcTest(HealthCheckController.class) // Focus test on this controller
-@Import(SecurityConfig.class) // Import our new security config
+@WebMvcTest(HealthCheckController.class)
+@Import(SecurityConfig.class)
 public class HealthCheckControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    // We mock this bean so SecurityConfig can load without needing the real
+    // AuthService
+    @MockitoBean
+    private CustomOAuth2AuthenticationSuccessHandler successHandler;
 
     @Test
     void shouldAllowAccessToPublicHealthEndpoint() throws Exception {
@@ -459,11 +466,8 @@ public class HealthCheckControllerTest {
 
     @Test
     void shouldDenyAccessToProtectedEndpointWithoutAuth() throws Exception {
-        // When we access a protected endpoint without being logged in,
-        // Spring Security should redirect us to the login page.
-        // The HTTP status for a redirect is 302 (Found).
         mockMvc.perform(get("/api/protected"))
-                .andExpect(status().isFound());
+                .andExpect(status().isFound()); // 302 Redirect to Login
     }
 }
 ```
@@ -704,6 +708,9 @@ class AuthServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private com.fractal.backend.repository.WorkspaceMemberRepository workspaceMemberRepository;
+
     @InjectMocks
     private AuthService authService;
 
@@ -762,29 +769,34 @@ in backend/src/main/java/com/fractal/backend/service/AuthService.java
 ```
 package com.fractal.backend.service;
 
-import com.fractal.backend.dto.LoginResponse;
-import com.fractal.backend.model.User;
-import com.fractal.backend.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
+import com.fractal.backend.dto.LoginResponse;
+import com.fractal.backend.model.User;
+import com.fractal.backend.model.Workspace;
+import com.fractal.backend.model.WorkspaceMember;
+import com.fractal.backend.repository.UserRepository;
+import com.fractal.backend.repository.WorkspaceMemberRepository;
+import com.fractal.backend.repository.WorkspaceRepository;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
-@RequiredArgsConstructor // Lombok: Creates constructor for final fields (Injection)
+@RequiredArgsConstructor
 public class AuthService {
 
     private final UserRepository userRepository;
-    
-    // We will inject WorkspaceRepository later when we build that part
+    private final WorkspaceMemberRepository workspaceMemberRepository; // Inject this
+    private final WorkspaceRepository workspaceRepository; // Inject this
 
     @Transactional
     public LoginResponse loginOrSignup(String email, String fullName, String avatarUrl) {
-        // 1. Try to find user
         User user = userRepository.findByEmail(email)
                 .orElseGet(() -> {
-                    // 2. If not found, create new
                     User newUser = new User();
                     newUser.setEmail(email);
                     newUser.setFullName(fullName);
@@ -792,11 +804,25 @@ public class AuthService {
                     return userRepository.save(newUser);
                 });
 
-        // 3. TODO: Fetch workspaces for this user (Empty for now)
-        
+        List<WorkspaceMember> memberships = workspaceMemberRepository.findAllByUserId(user.getId());
+
+        // 2. Map to DTOs
+        List<LoginResponse.WorkspaceDTO> workspaceDTOs = memberships.stream().map(member -> {
+            Workspace w = workspaceRepository.findById(member.getWorkspaceId()).orElse(null);
+            if (w == null)
+                return null;
+
+            return LoginResponse.WorkspaceDTO.builder()
+                    .id(w.getId())
+                    .name(w.getName())
+                    .slug(w.getSlug())
+                    .role(member.getRole())
+                    .build();
+        }).filter(dto -> dto != null).collect(Collectors.toList());
+
         return LoginResponse.builder()
                 .user(user)
-                .workspaces(new ArrayList<>()) 
+                .workspaces(workspaceDTOs)
                 .build();
     }
 }
@@ -1109,7 +1135,645 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
 
 created a project in google developer console called 'fractal',configured oauth concent screen, went to APIs & Services > Credentials and created oauth2 client added origin: http://localhost:8080 and redirect URI: http://localhost:8080/login/oauth2/code/google, added the credentials to .env in backend and frontend folder. 
 
+this is the middleware.ts 
+```
+import { type NextRequest, NextResponse } from 'next/server';
+import { rootDomain } from '@/lib/utils';
+
+function extractSubdomain(request: NextRequest): string | null {
+  const url = request.url;
+  const host = request.headers.get('host') || '';
+  const hostname = host.split(':')[0];
+
+  // Local development environment
+  if (url.includes('localhost') || url.includes('127.0.0.1')) {
+    // Try to extract subdomain from the full URL
+    const fullUrlMatch = url.match(/http:\/\/([^.]+)\.localhost/);
+    if (fullUrlMatch && fullUrlMatch[1]) {
+      return fullUrlMatch[1];
+    }
+
+    // Fallback to host header approach
+    if (hostname.includes('.localhost')) {
+      return hostname.split('.')[0];
+    }
+
+    return null;
+  }
+
+  // Production environment
+  const rootDomainFormatted = rootDomain.split(':')[0];
+
+  // Handle preview deployment URLs (tenant---branch-name.vercel.app)
+  if (hostname.includes('---') && hostname.endsWith('.vercel.app')) {
+    const parts = hostname.split('---');
+    return parts.length > 0 ? parts[0] : null;
+  }
+
+  // Regular subdomain detection
+  const isSubdomain =
+    hostname !== rootDomainFormatted &&
+    hostname !== `www.${rootDomainFormatted}` &&
+    hostname.endsWith(`.${rootDomainFormatted}`);
+
+  return isSubdomain ? hostname.replace(`.${rootDomainFormatted}`, '') : null;
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const subdomain = extractSubdomain(request);
+
+  if (subdomain) {
+    // Block access to admin page from subdomains
+    if (pathname.startsWith('/admin')) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+
+    // For the root path on a subdomain, rewrite to the subdomain page
+    if (pathname === '/') {
+      return NextResponse.rewrite(new URL(`/s/${subdomain}`, request.url));
+    }
+  }
+
+  // On the root domain, allow normal access
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all paths except for:
+     * 1. /api routes
+     * 2. /_next (Next.js internals)
+     * 3. all root files inside /public (e.g. /favicon.ico)
+     */
+    '/((?!api|_next|[\\w-]+\\.\\w+).*)'
+  ]
+};
+```
+
+- in backend/src/main/java/com/fractal/backend/controller/WorkspaceController.java
+```
+package com.fractal.backend.controller;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.fractal.backend.dto.CreateWorkspaceRequest;
+import com.fractal.backend.dto.WorkspaceResponse;
+import com.fractal.backend.model.User;
+import com.fractal.backend.model.Workspace;
+import com.fractal.backend.repository.UserRepository;
+import com.fractal.backend.service.WorkspaceService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+
+@RestController
+@RequestMapping("/api/workspaces")
+@RequiredArgsConstructor
+public class WorkspaceController {
+
+    private final WorkspaceService workspaceService;
+    private final UserRepository userRepository;
+
+    @PostMapping
+    public WorkspaceResponse createWorkspace(
+            @AuthenticationPrincipal OAuth2User principal,
+            @Valid @RequestBody CreateWorkspaceRequest request) {
+
+        if (principal == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
+        }
+
+        String email = principal.getAttribute("email");
+        
+        // Find the internal User ID based on the OAuth email
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        // Call the service
+        Workspace workspace = workspaceService.createWorkspace(user.getId(), request.getName());
+
+        // Return the response
+        return WorkspaceResponse.builder()
+                .id(workspace.getId())
+                .name(workspace.getName())
+                .slug(workspace.getSlug())
+                .role("OWNER")
+                .build();
+    }
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/CreateWorkspaceRequest.java
+```
+package com.fractal.backend.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+public class CreateWorkspaceRequest {
+    @NotBlank(message = "Workspace name is required")
+    private String name;
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/WorkspaceResponse.java
+```
+package com.fractal.backend.dto;
+
+import java.util.UUID;
+
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class WorkspaceResponse {
+    private UUID id;
+    private String name;
+    private String slug;
+    private String role; // "OWNER"
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/model/Workspace.java
+```
+package com.fractal.backend.model;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "workspaces")
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class Workspace {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.AUTO)
+    private UUID id;
+
+    // The person who pays/owns the data
+    @Column(name = "owner_id", nullable = false)
+    private UUID ownerId;
+
+    @Column(nullable = false)
+    private String name;
+
+    @Column(unique = true)
+    private String slug;
+
+    @Column(name = "plan_type")
+    @Builder.Default
+    private String planType = "FREE";
+
+    @Column(name = "stripe_customer_id")
+    private String stripeCustomerId;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private OffsetDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private OffsetDateTime updatedAt;
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/model/WorkspaceMember.java
+```
+package com.fractal.backend.model;
+
+import java.io.Serializable;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+import org.hibernate.annotations.CreationTimestamp;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "workspace_members")
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@IdClass(WorkspaceMember.WorkspaceMemberId.class) // Defines Composite Key
+public class WorkspaceMember {
+
+    @Id
+    @Column(name = "workspace_id")
+    private UUID workspaceId;
+
+    @Id
+    @Column(name = "user_id")
+    private UUID userId;
+
+    @Column(name = "role")
+    @Builder.Default
+    private String role = "MEMBER";
+
+    @CreationTimestamp
+    @Column(name = "joined_at")
+    private OffsetDateTime joinedAt;
+
+    // Inner class for Composite Key
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class WorkspaceMemberId implements Serializable {
+        private UUID workspaceId;
+        private UUID userId;
+    }
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/repository/WorkspaceMemberRepository.java
+```
+package com.fractal.backend.repository;
+
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import com.fractal.backend.model.WorkspaceMember;
+
+@Repository
+public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember, WorkspaceMember.WorkspaceMemberId> {
+    List<WorkspaceMember> findAllByUserId(UUID userId);
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/repository/WorkspaceRepository.java
+```
+package com.fractal.backend.repository;
+
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import com.fractal.backend.model.Workspace;
+
+@Repository
+public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
+    boolean existsBySlug(String slug);
+
+    List<Workspace> findAllByOwnerId(UUID ownerId);
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/service/WorkspaceService.java
+```
+package com.fractal.backend.service;
+
+import java.text.Normalizer;
+import java.util.Locale;
+import java.util.UUID;
+import java.util.regex.Pattern;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.fractal.backend.model.Workspace;
+import com.fractal.backend.model.WorkspaceMember;
+import com.fractal.backend.repository.WorkspaceMemberRepository;
+import com.fractal.backend.repository.WorkspaceRepository;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class WorkspaceService {
+
+    private final WorkspaceRepository workspaceRepository;
+    private final WorkspaceMemberRepository workspaceMemberRepository;
+
+    private static final Pattern NONLATIN = Pattern.compile("[^\\w-]");
+    private static final Pattern WHITESPACE = Pattern.compile("[\\s]");
+
+    @Transactional
+    public Workspace createWorkspace(UUID userId, String name) {
+        // 1. Generate a slug (URL friendly version of name)
+        String slug = toSlug(name);
+        
+        // 2. Ensure slug uniqueness (simple append strategy)
+        String originalSlug = slug;
+        int count = 1;
+        while (workspaceRepository.existsBySlug(slug)) {
+            slug = originalSlug + "-" + count;
+            count++;
+        }
+
+        // 3. Create Workspace
+        Workspace workspace = Workspace.builder()
+                .ownerId(userId)
+                .name(name)
+                .slug(slug)
+                .planType("FREE")
+                .build();
+        
+        Workspace savedWorkspace = workspaceRepository.save(workspace);
+
+        // 4. Add Creator as OWNER
+        WorkspaceMember member = WorkspaceMember.builder()
+                .workspaceId(savedWorkspace.getId())
+                .userId(userId)
+                .role("OWNER")
+                .build();
+        
+        workspaceMemberRepository.save(member);
+
+        return savedWorkspace;
+    }
+
+    // Helper to convert "My Company Name" -> "my-company-name"
+    private String toSlug(String input) {
+        String nowhitespace = WHITESPACE.matcher(input).replaceAll("-");
+        String normalized = Normalizer.normalize(nowhitespace, Normalizer.Form.NFD);
+        String slug = NONLATIN.matcher(normalized).replaceAll("");
+        return slug.toLowerCase(Locale.ENGLISH);
+    }
+}
+```
+
+- in backend/src/test/java/com/fractal/controller/WorkspaceControllerTest.java
+```
+package com.fractal.controller;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fasterxml.jackson.databind.ObjectMapper; // Import ObjectMapper
+import com.fractal.backend.config.SecurityConfig;
+import com.fractal.backend.controller.WorkspaceController;
+import com.fractal.backend.dto.CreateWorkspaceRequest;
+import com.fractal.backend.model.User;
+import com.fractal.backend.model.Workspace;
+import com.fractal.backend.repository.UserRepository;
+import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
+import com.fractal.backend.service.WorkspaceService;
+
+@WebMvcTest(WorkspaceController.class)
+@Import(SecurityConfig.class)
+class WorkspaceControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    // Use `new ObjectMapper()` directly instead of Autowiring if config is tricky
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @MockitoBean
+    private WorkspaceService workspaceService;
+
+    @MockitoBean
+    private UserRepository userRepository;
+
+    @MockitoBean
+    private CustomOAuth2AuthenticationSuccessHandler successHandler;
+
+    @Test
+    void createWorkspace_ShouldReturnCreatedWorkspace() throws Exception {
+        // Arrange
+        String email = "test@fractal.com";
+        UUID userId = UUID.randomUUID();
+        String workspaceName = "My New Company";
+
+        User mockUser = new User();
+        mockUser.setId(userId);
+        mockUser.setEmail(email);
+
+        Workspace mockWorkspace = Workspace.builder()
+                .id(UUID.randomUUID())
+                .name(workspaceName)
+                .slug("my-new-company")
+                .ownerId(userId)
+                .build();
+
+        // Mock DB finding the user by email
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+
+        // Mock Service creating the workspace
+        when(workspaceService.createWorkspace(eq(userId), eq(workspaceName))).thenReturn(mockWorkspace);
+
+        CreateWorkspaceRequest request = new CreateWorkspaceRequest();
+        request.setName(workspaceName);
+
+        // Act & Assert
+        mockMvc.perform(post("/api/workspaces")
+                .with(oauth2Login().attributes(attrs -> attrs.put("email", email)))
+                .with(csrf()) 
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))) // Use the manual instance
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value(workspaceName))
+                .andExpect(jsonPath("$.slug").value("my-new-company"))
+                .andExpect(jsonPath("$.role").value("OWNER"));
+    }
+}
+```
+
+- in backend/src/test/java/com/fractal/service/WorkspaceServiceTest.java
+```
+package com.fractal.service;
+
+import com.fractal.backend.model.User;
+import com.fractal.backend.model.Workspace;
+import com.fractal.backend.model.WorkspaceMember;
+import com.fractal.backend.repository.WorkspaceMemberRepository;
+import com.fractal.backend.repository.WorkspaceRepository;
+import com.fractal.backend.service.WorkspaceService;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class WorkspaceServiceTest {
+
+    @Mock
+    private WorkspaceRepository workspaceRepository;
+
+    @Mock
+    private WorkspaceMemberRepository workspaceMemberRepository;
+
+    @InjectMocks
+    private WorkspaceService workspaceService;
+
+    @Test
+    void createWorkspace_ShouldSaveWorkspaceAndAddOwner() {
+        // Arrange
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setEmail("test@fractal.com");
+
+        String workspaceName = "Fractal Inc";
+        
+        // Mock checking for slug uniqueness (return false means slug is not taken)
+        when(workspaceRepository.existsBySlug(anyString())).thenReturn(false);
+
+        // Mock saving workspace (return what passed in)
+        when(workspaceRepository.save(any(Workspace.class))).thenAnswer(i -> {
+            Workspace w = i.getArgument(0);
+            w.setId(UUID.randomUUID()); // Simulate DB ID generation
+            return w;
+        });
+
+        // Act
+        Workspace createdWorkspace = workspaceService.createWorkspace(user.getId(), workspaceName);
+
+        // Assert
+        assertThat(createdWorkspace).isNotNull();
+        assertThat(createdWorkspace.getName()).isEqualTo(workspaceName);
+        assertThat(createdWorkspace.getOwnerId()).isEqualTo(user.getId());
+        assertThat(createdWorkspace.getSlug()).startsWith("fractal-inc");
+
+        // Verify that the user was added as a member with OWNER role
+        ArgumentCaptor<WorkspaceMember> memberCaptor = ArgumentCaptor.forClass(WorkspaceMember.class);
+        verify(workspaceMemberRepository).save(memberCaptor.capture());
+
+        WorkspaceMember member = memberCaptor.getValue();
+        assertThat(member.getUserId()).isEqualTo(user.getId());
+        assertThat(member.getRole()).isEqualTo("OWNER");
+    }
+}
+```
+
+
+
+
+in frontend/app/page.tsx
+```
+export default function HomePage() {
+  // We read the environment variable to build the full backend URL.
+  const backendUrl = `${process.env.NEXT_PUBLIC_API_URL}/oauth2/authorization/google`;
+
+  return (
+    <div className="flex h-screen w-screen items-center justify-center">
+      <div className="text-center">
+        <h1 className="mb-4 text-4xl font-bold">Welcome to Fractal</h1>
+        <p className="mb-6 text-lg text-gray-600">
+          Your new feature-rich Todo List application.
+        </p>
+        <a
+          href={backendUrl}
+          className="inline-block rounded-md bg-blue-600 px-6 py-3 font-semibold text-white shadow-md transition-transform duration-200 hover:scale-105"
+        >
+          Sign in with Google
+        </a>
+      </div>
+    </div>
+  );
+}
+```
+
+google login is working. 
+
+this is the current file structure is frontend
+.
+├── README.md
+├── app
+│   ├── actions.ts
+│   ├── admin
+│   │   ├── dashboard.tsx
+│   │   └── page.tsx
+│   ├── favicon.ico
+│   ├── globals.css
+│   ├── layout.tsx
+│   ├── not-found.tsx
+│   ├── page.tsx
+│   ├── s
+│   │   └── [subdomain]
+│   │       └── page.tsx
+│   └── subdomain-form.tsx
+├── bun.lock
+├── components
+│   └── ui
+│       ├── button.tsx
+│       ├── card.tsx
+│       ├── dialog.tsx
+│       ├── emoji-picker.tsx
+│       ├── input.tsx
+│       ├── label.tsx
+│       └── popover.tsx
+├── components.json
+├── lib
+│   ├── redis.ts
+│   ├── subdomains.ts
+│   └── utils.ts
+├── middleware.ts
+├── next-env.d.ts
+├── next.config.ts
+├── package.json
+├── pnpm-lock.yaml
+├── postcss.config.mjs
+├── tsconfig.json
+
 Till this point everything is done and implemented by me. i want your help after this point. 
+
+Run spring boot using: ./mvnw spring-boot:run
 
 
 2. Create a home page and login I want to setup google oauth 2 for login. setup the backend in spring boot using TDD. the signup flow should be like notion/slack, where user must first create a workspace if he has not done yet, if he has multiple workspaces, he should select which one to go into. not sure if its easier to use https://authjs.dev/getting-started/migrating-to-v5 ? as i want to allow preview deployements to also be able to log in when i host this on vercel. 

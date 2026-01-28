@@ -22,6 +22,9 @@ class AuthServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private com.fractal.backend.repository.WorkspaceMemberRepository workspaceMemberRepository;
+
     @InjectMocks
     private AuthService authService;
 
