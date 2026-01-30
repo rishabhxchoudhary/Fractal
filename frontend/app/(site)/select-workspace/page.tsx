@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { redirectToRoot } from "@/lib/utils";
+import { redirectToRoot, redirectToWorkspace } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
