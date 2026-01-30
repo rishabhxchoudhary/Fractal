@@ -52,14 +52,12 @@ export default function WorkspaceSettingsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("MEMBER");
   const [isInviting, setIsInviting] = useState(false);
-  const [isWorkspaceResolved, setIsWorkspaceResolved] = useState(false);
 
   // Initialize form with current workspace data
   useEffect(() => {
     if (currentWorkspace) {
       setWorkspaceName(currentWorkspace.name);
       setWorkspaceSlug(currentWorkspace.slug);
-      setIsWorkspaceResolved(true);
     }
   }, [currentWorkspace]);
 
@@ -190,19 +188,6 @@ export default function WorkspaceSettingsPage() {
       setIsInviting(false);
     }
   };
-
-  if (!isWorkspaceResolved) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="text-muted-foreground">Loading settings...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
 
   return (
     <DashboardLayout>
