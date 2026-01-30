@@ -2,82 +2,83 @@ A comprehensive and well-structured plan for a feature-rich Todo List applicatio
 
 ### **Advanced Features**
 
-*   **Natural Language Task Addition:** Employ Retrieval-Augmented Generation (RAG) to convert natural language input into tasks. This will involve creating embeddings from the tasks and using a vector database like Qdrant with HNSW ANNS cosine similarity for searching.
-*   **Email to Task:** Provide a dedicated email address that, upon receiving a forwarded email, automatically creates a new task.
-*   **Browser Extension:** A browser extension to capture the current webpage as a task, ideal for creating reading lists or research items.
-*   **Bi-Directional API / Webhooks:** Instead of relying on pre-built integrations, offer a webhook URL for each project. This empowers power users to connect with services like IFTTT, Zapier, or custom scripts (e.g., creating a task when a GitHub issue is assigned).
-*   **Markdown and Rich Text Support:** The task description field will fully support Markdown, including headers, code blocks, bold, italics, and inline image rendering.
-*   **File Attachments:** Allow users to attach PDFs, images, or spreadsheets directly to tasks for reference.
-*   **Undo/Redo History:** Implement infinite undo/redo functionality for all changes within a list. Accidental project deletions can be reversed with a simple shortcut. This will be managed through a `command_log` table storing each user event.
-*   **Drag and Drop Functionality:** Utilize fractional indexing with an algorithm like LexoRank to enable smooth and persistent drag-and-drop ordering of tasks.
-*   **Local-First Application:** Design the app to work offline using Conflict-free Replicated Data Types (CRDTs) and Automerge for seamless data synchronization.
-*   **Attribute-Based Access Control (ABAC):** Implement fine-grained permissions (READ, CREATE, UPDATE, DELETE, COMPLETE, RESCHEDULE) using Open Policy Agent (OPA) with policies written in Rego.
-*   **Role-Based Access Control (RBAC):** A hierarchical permission system with roles: Owner > Admin > Editor > Viewer.
+- **Natural Language Task Addition:** Employ Retrieval-Augmented Generation (RAG) to convert natural language input into tasks. This will involve creating embeddings from the tasks and using a vector database like Qdrant with HNSW ANNS cosine similarity for searching.
+- **Email to Task:** Provide a dedicated email address that, upon receiving a forwarded email, automatically creates a new task.
+- **Browser Extension:** A browser extension to capture the current webpage as a task, ideal for creating reading lists or research items.
+- **Bi-Directional API / Webhooks:** Instead of relying on pre-built integrations, offer a webhook URL for each project. This empowers power users to connect with services like IFTTT, Zapier, or custom scripts (e.g., creating a task when a GitHub issue is assigned).
+- **Markdown and Rich Text Support:** The task description field will fully support Markdown, including headers, code blocks, bold, italics, and inline image rendering.
+- **File Attachments:** Allow users to attach PDFs, images, or spreadsheets directly to tasks for reference.
+- **Undo/Redo History:** Implement infinite undo/redo functionality for all changes within a list. Accidental project deletions can be reversed with a simple shortcut. This will be managed through a `command_log` table storing each user event.
+- **Drag and Drop Functionality:** Utilize fractional indexing with an algorithm like LexoRank to enable smooth and persistent drag-and-drop ordering of tasks.
+- **Local-First Application:** Design the app to work offline using Conflict-free Replicated Data Types (CRDTs) and Automerge for seamless data synchronization.
+- **Attribute-Based Access Control (ABAC):** Implement fine-grained permissions (READ, CREATE, UPDATE, DELETE, COMPLETE, RESCHEDULE) using Open Policy Agent (OPA) with policies written in Rego.
+- **Role-Based Access Control (RBAC):** A hierarchical permission system with roles: Owner > Admin > Editor > Viewer.
 
 ### **Schedule Management**
 
-*   **Start and End Dates:** Define start dates and deadlines for tasks.
-*   **Recurring Tasks:** Support for daily, weekly, and monthly recurrences based on the iCalendar (RFC 5545) standard, potentially using a library like ical4j in Java.
-*   **Time Blocking:** Sync tasks with Google Calendar and Apple Calendar to facilitate time blocking.
-*   **Timezone Intelligence:** Handle both fixed and floating timezones for tasks.
+- **Start and End Dates:** Define start dates and deadlines for tasks.
+- **Recurring Tasks:** Support for daily, weekly, and monthly recurrences based on the iCalendar (RFC 5545) standard, potentially using a library like ical4j in Java.
+- **Time Blocking:** Sync tasks with Google Calendar and Apple Calendar to facilitate time blocking.
+- **Timezone Intelligence:** Handle both fixed and floating timezones for tasks.
 
 ### **Structuring**
 
-*   **Infinite Nesting:** Allow for infinite nesting of projects (sub-projects) and tasks (sub-tasks) using closure tables with `Ancestor`, `Descendant`, and `Depth` columns.
-*   **Tags:** A flexible many-to-many relationship for tagging tasks (e.g., @Computer, #DeepWork, LowEnergy).
-*   **Kanban & Gantt Views:** Provide the ability to visualize project tasks as a Kanban board or a Gantt chart.
+- **Infinite Nesting:** Allow for infinite nesting of projects (sub-projects) and tasks (sub-tasks) using closure tables with `Ancestor`, `Descendant`, and `Depth` columns.
+- **Tags:** A flexible many-to-many relationship for tagging tasks (e.g., @Computer, #DeepWork, LowEnergy).
+- **Kanban & Gantt Views:** Provide the ability to visualize project tasks as a Kanban board or a Gantt chart.
 
 ### **Workflow & Execution**
 
-*   **Task Dependencies:** Implement task dependencies where one task cannot be completed until another is finished, managed using a Directed Acyclic Graph (DAG) and topological sorting.
-*   **Focus Mode:** A feature to hide all UI distractions, showing only the current task.
-*   **Pomodoro Timer Integration:** A built-in Pomodoro timer to help users focus on tasks for 25-minute intervals.
-*   **Templates:** Allow users to save a list of tasks as a template (e.g., "New Client Onboarding") for reuse.
-*   **Task "Rot" & Auto-Archiving:** Visual cues for stale tasks, such as fading colors or icons. The app will prompt users to deal with tasks that have been repeatedly rescheduled.
-*   **Eisenhower Matrix View:** A dynamic four-quadrant grid that automatically sorts tasks based on their urgency and importance.
-*   **Soft vs. Hard Deadlines:** Differentiate between hard deadlines (must be done) and soft, goal-oriented deadlines that don't trigger "overdue" alerts if missed by a short period.
-*   **Notification System:** A system to send reminders and notifications to users.
+- **Task Dependencies:** Implement task dependencies where one task cannot be completed until another is finished, managed using a Directed Acyclic Graph (DAG) and topological sorting.
+- **Focus Mode:** A feature to hide all UI distractions, showing only the current task.
+- **Pomodoro Timer Integration:** A built-in Pomodoro timer to help users focus on tasks for 25-minute intervals.
+- **Templates:** Allow users to save a list of tasks as a template (e.g., "New Client Onboarding") for reuse.
+- **Task "Rot" & Auto-Archiving:** Visual cues for stale tasks, such as fading colors or icons. The app will prompt users to deal with tasks that have been repeatedly rescheduled.
+- **Eisenhower Matrix View:** A dynamic four-quadrant grid that automatically sorts tasks based on their urgency and importance.
+- **Soft vs. Hard Deadlines:** Differentiate between hard deadlines (must be done) and soft, goal-oriented deadlines that don't trigger "overdue" alerts if missed by a short period.
+- **Notification System:** A system to send reminders and notifications to users.
 
 ### **Collaboration**
 
-*   **Shared Projects with Permissions:** Invite others to projects with specific permissions (Read Only, Can Edit, Can Admin).
-*   **Task Assignment:** Assign tasks within a shared project to specific individuals.
-*   **Comments & Activity Log:** A discussion thread within each task and a log of all changes.
+- **Shared Projects with Permissions:** Invite others to projects with specific permissions (Read Only, Can Edit, Can Admin).
+- **Task Assignment:** Assign tasks within a shared project to specific individuals.
+- **Comments & Activity Log:** A discussion thread within each task and a log of all changes.
 
 ### **AI Features**
 
-*   **Task Breakdown:** An AI feature to break down a large task into smaller, manageable sub-tasks.
-*   **Smart Rescheduling:** An AI algorithm to analyze overdue tasks and suggest a realistic new schedule based on priorities and calendar availability.
-*   **Context-Aware Suggestions:** The app will suggest quick tasks to complete based on the user's available time slots.
+- **Task Breakdown:** An AI feature to break down a large task into smaller, manageable sub-tasks.
+- **Smart Rescheduling:** An AI algorithm to analyze overdue tasks and suggest a realistic new schedule based on priorities and calendar availability.
+- **Context-Aware Suggestions:** The app will suggest quick tasks to complete based on the user's available time slots.
 
 ### **Security**
 
-*   **Data Encryption:** All data at rest will be encrypted.
-*   **Compliance:** Adherence to security standards such as SOC 2, GDPR, and ISO.
+- **Data Encryption:** All data at rest will be encrypted.
+- **Compliance:** Adherence to security standards such as SOC 2, GDPR, and ISO.
 
 ### **Analytics**
 
-*   **Productivity Pulse/Velocity:** A visual representation of task completion rates over time.
-*   **Estimated vs. Actual Time:** The app will track the difference between estimated and actual time spent on tasks to provide insights into estimation accuracy.
-*   **Circadian Rhythm Optimization:** The app will learn the user's most productive times and suggest scheduling deep work accordingly.
-*   **CQRS Pattern:** Utilize the Command Query Responsibility Segregation pattern for managing data.
+- **Productivity Pulse/Velocity:** A visual representation of task completion rates over time.
+- **Estimated vs. Actual Time:** The app will track the difference between estimated and actual time spent on tasks to provide insights into estimation accuracy.
+- **Circadian Rhythm Optimization:** The app will learn the user's most productive times and suggest scheduling deep work accordingly.
+- **CQRS Pattern:** Utilize the Command Query Responsibility Segregation pattern for managing data.
 
 ### **Tech Stack**
 
-*   **Frontend:** Next.js (initially without local-first, to be added later).
-*   **Backend:** Spring Boot (Java).
-*   **Scalability:** The application will be designed to handle over 200 million requests.
-*   **AI:** AWS Bedrock for embedding models.
-*   **Vector Database:** Qdrant (free tier).
-*   **Event Logging:** Initially a `command_log` table, with plans to migrate to Kafka.
-*   **Database:** Writes (Commands) and initial Reads will go to a normalized PostgreSQL database. There is potential to later shift read operations to OpenSearch.
-*   **Development Methodology:** Test-Driven Development (TDD).
-*   **Initial Architecture:** Serverless approach using AWS Lambda and API Gateway, with a future migration to a load balancer and ECS Fargate to mitigate cold starts.
-*   **Authentication:** OAuth 2.0 with Google Sign-In as the initial provider.
-*   **Database Hosting:** AWS RDS for PostgreSQL.
-*   **Cold Start Mitigation:** AWS SnapStart will be used to reduce cold start times for Lambda functions.
-- using redis for cacheing. 
-- use flyway for database migrations
+- **Frontend:** Next.js (initially without local-first, to be added later).
+- **Backend:** Spring Boot (Java).
+- **Scalability:** The application will be designed to handle over 200 million requests.
+- **AI:** AWS Bedrock for embedding models.
+- **Vector Database:** Qdrant (free tier).
+- **Event Logging:** Initially a `command_log` table, with plans to migrate to Kafka.
+- **Database:** Writes (Commands) and initial Reads will go to a normalized PostgreSQL database. There is potential to later shift read operations to OpenSearch.
+- **Development Methodology:** Test-Driven Development (TDD).
+- **Initial Architecture:** Serverless approach using AWS Lambda and API Gateway, with a future migration to a load balancer and ECS Fargate to mitigate cold starts.
+- **Authentication:** OAuth 2.0 with Google Sign-In as the initial provider.
+- **Database Hosting:** AWS RDS for PostgreSQL.
+- **Cold Start Mitigation:** AWS SnapStart will be used to reduce cold start times for Lambda functions.
+
+* using redis for cacheing.
+* use flyway for database migrations
 
 ### **Database Schema Design**
 
@@ -349,19 +350,21 @@ CREATE TABLE webhook_subscriptions (
 ```
 
 Steps:
+
 1. https://github.com/vercel/platforms cloned this repo in the /frontend folder. I am building a multi tenant application where each user can create his workspace, every work space will have its own subdomain... I also setup redis, i have KV_REST_API_URL, KV_REST_API_TOKEN from upstash.
 
 - Created a spring initializer project with dependencies:
-    Spring Web (For building REST APIs)
-    Spring Data JPA (For database interaction)
-    PostgreSQL Driver (Connects to Postgres)
-    Flyway Migration (Database version control)
-    Lombok (Reduces code boilerplate)
-    Spring Security (Authentication foundation)
-    OAuth2 Client (For Google Login)
-    Testcontainers (For running real DBs in tests - crucial for TDD)
+  Spring Web (For building REST APIs)
+  Spring Data JPA (For database interaction)
+  PostgreSQL Driver (Connects to Postgres)
+  Flyway Migration (Database version control)
+  Lombok (Reduces code boilerplate)
+  Spring Security (Authentication foundation)
+  OAuth2 Client (For Google Login)
+  Testcontainers (For running real DBs in tests - crucial for TDD)
 - put it in /backend folder
 - created docker-compose.yml with this content:
+
 ```
 version: '3.8'
 services:
@@ -375,9 +378,11 @@ services:
     ports:
       - "5432:5432"
 ```
+
 - open a separate terminal in backend folder and `docker-compose up -d`
 
 in the src/main/resources/application.properties, added this config:
+
 ```
 spring.application.name=fractal
 
@@ -402,10 +407,11 @@ spring.security.oauth2.client.registration.google.client-secret=${GOOGLE_CLIENT_
 app.frontend.url=http://localhost:3000
 ```
 
-Ran the test using `mvn test` command and it failed. 
+Ran the test using `mvn test` command and it failed.
 
 - in the backend/src/main/java/com/fractal/backend/controller/HealthCheckController.java
-add this:
+  add this:
+
 ```
 package com.fractal.backend.controller;
 
@@ -430,6 +436,7 @@ public class HealthCheckController {
 ```
 
 - in the backend/src/test/java/com/fractal/controller/HealthCheckControllerTest.java
+
 ```
 package com.fractal.controller;
 
@@ -472,7 +479,8 @@ public class HealthCheckControllerTest {
 }
 ```
 
-- in the backend/src/main/resources/db/migration/V1__init_schema.sql i have added:
+- in the backend/src/main/resources/db/migration/V1\_\_init_schema.sql i have added:
+
 ```
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS ltree;
@@ -519,6 +527,7 @@ CREATE TABLE user_identities (
 ```
 
 - in the `backend/src/test/java/com/fractal/repository/UserRepositoryTest.java`
+
 ```
 package com.fractal.repository;
 
@@ -545,7 +554,7 @@ public class UserRepositoryTest {
 
     // This spins up a temporary Postgres DB in Docker just for this test
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:16"); // Or another version
-    
+
     @Container
     @ServiceConnection
     private static final PostgreSQLContainer postgres = new PostgreSQLContainer(POSTGRES_IMAGE);
@@ -559,11 +568,11 @@ public class UserRepositoryTest {
         User newUser = new User();
         newUser.setEmail("test@fractal.com");
         newUser.setFullName("Test User");
-        
+
         // Act
         userRepository.save(newUser);
         Optional<User> foundUser = userRepository.findByEmail("test@fractal.com");
-        
+
         // Assert
         assertThat(foundUser).isPresent();
         assertThat(foundUser.get().getEmail()).isEqualTo("test@fractal.com");
@@ -572,6 +581,7 @@ public class UserRepositoryTest {
 ```
 
 - in the `backend/src/main/java/com/fractal/backend/model/User.java`
+
 ```
 package com.fractal.backend.model;
 
@@ -623,6 +633,7 @@ public class User {
 ```
 
 - in the backend/src/main/java/com/fractal/backend/repository/UserRepository.java
+
 ```
 package com.fractal.backend.repository;
 
@@ -642,6 +653,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 ```
 
 In pom.xml, i added:
+
 ```
         <dependency>
             <groupId>io.github.cdimascio</groupId>
@@ -673,7 +685,7 @@ public class FractalApplication {
         Dotenv dotenv = Dotenv.configure()
                 .ignoreIfMissing() // Don't crash if file is missing (e.g., in Prod/Docker)
                 .load();
-        dotenv.entries().forEach(entry -> 
+        dotenv.entries().forEach(entry ->
             System.setProperty(entry.getKey(), entry.getValue())
         );
 
@@ -683,6 +695,7 @@ public class FractalApplication {
 ```
 
 - in the src/test/java/com/fractal/service/AuthServiceTest.java
+
 ```
 package com.fractal.service;
 
@@ -723,7 +736,7 @@ class AuthServiceTest {
 
         // Mock DB returning empty (User not found)
         when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
-        
+
         // Mock DB saving a user (return the user that was passed in)
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
             User u = invocation.getArgument(0);
@@ -766,6 +779,7 @@ class AuthServiceTest {
 ```
 
 in backend/src/main/java/com/fractal/backend/service/AuthService.java
+
 ```
 package com.fractal.backend.service;
 
@@ -829,6 +843,7 @@ public class AuthService {
 ```
 
 in backend/src/main/java/com/fractal/backend/dto/LoginResponse.java
+
 ```
 package com.fractal.backend.dto;
 
@@ -861,6 +876,7 @@ public class LoginResponse {
 ```
 
 - backend/src/main/java/com/fractal/backend/config/SecurityConfig.java
+
 ```
 package com.fractal.backend.config;
 
@@ -869,8 +885,11 @@ import java.util.List;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -880,62 +899,84 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
 import com.fractal.backend.security.JwtAuthenticationFilter;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 
 @Configuration
 @EnableWebSecurity
-@RequiredArgsConstructor // Add this for constructor injection
+@RequiredArgsConstructor
 public class SecurityConfig {
 
-    // Inject your custom success handler
-    private final CustomOAuth2AuthenticationSuccessHandler customOAuth2AuthenticationSuccessHandler;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+        private final CustomOAuth2AuthenticationSuccessHandler customOAuth2AuthenticationSuccessHandler;
+        private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-                // 0. Enable CORS
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .csrf(csrf -> csrf.disable())
-                // 1. Authorize Requests
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/health").permitAll()
-                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/api/**").permitAll() // Allow
-                                                                                                             // OPTIONS
-                                                                                                             // for CORS
-                                                                                                             // preflight
-                        .requestMatchers("/api/**").authenticated()
-                        .anyRequest().permitAll())
-                // 2. Configure OAuth2 Login
-                .oauth2Login(oauth2 -> {
-                    // Tell Spring Security to use your custom success handler
-                    oauth2.successHandler(customOAuth2AuthenticationSuccessHandler);
-                })
+        @Bean
+        @Order(1)
+        public SecurityFilterChain oauth2SecurityFilterChain(HttpSecurity http) throws Exception {
+                http
+                                .securityMatcher("/oauth2/**")
+                                .cors(cors -> cors.disable())
+                                .csrf(csrf -> csrf.disable())
+                                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                                .oauth2Login(oauth2 -> oauth2.successHandler(customOAuth2AuthenticationSuccessHandler));
+                return http.build();
+        }
 
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        @Bean
+        @Order(2)
+        public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
+                http
+                                .securityMatcher("/api/**")
+                                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                                .csrf(csrf -> csrf.disable())
 
-        return http.build();
-    }
+                                // 🚫 NO REDIRECTS — API behavior
+                                .exceptionHandling(ex -> ex
+                                                .authenticationEntryPoint((request, response, authException) -> {
+                                                        // --- DEBUG LOG START ---
+                                                        System.err.println(
+                                                                        ">>> [SECURITY ERROR] 401 Unauthorized Triggered in EntryPoint");
+                                                        System.err.println(">>> [SECURITY ERROR] Exception: "
+                                                                        + authException.getMessage());
+                                                        System.err.println(">>> [SECURITY ERROR] Request URI: "
+                                                                        + request.getRequestURI());
+                                                        // --- DEBUG LOG END ---
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of(
-                "http://localhost:3000", // Keep localhost for safety
-                "http://lvh.me:3000", // Main domain
-                "http://*.lvh.me:3000" // All subdomains
-        ));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*")); // Allow all headers
-        configuration.setAllowCredentials(true); // Allow credentials (cookies, authorization headers)
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", configuration); // Apply CORS to /api paths
-        return source;
-    }
+                                                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                                                }))
+
+                                .sessionManagement(session -> session
+                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .authorizeHttpRequests(auth -> auth
+                                                .requestMatchers("/api/health").permitAll()
+                                                .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
+                                                .anyRequest().authenticated())
+                                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+                return http.build();
+        }
+
+        @Bean
+        public CorsConfigurationSource corsConfigurationSource() {
+                CorsConfiguration configuration = new CorsConfiguration();
+                configuration.setAllowedOriginPatterns(List.of(
+                                "http://localhost:3000",
+                                "http://lvh.me:3000",
+                                "http://*.lvh.me:3000",
+                                "https://app.rishabhxchoudhary.com",
+                                "https://*.app.rishabhxchoudhary.com"));
+                configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+                configuration.setAllowedHeaders(List.of("*"));
+                configuration.setAllowCredentials(true);
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+                source.registerCorsConfiguration("/api/**", configuration);
+                return source;
+        }
 }
 ```
 
 - in backend/src/main/java/com/fractal/backend/config/WebConfig.java
+
 ```
 package com.fractal.backend.security;
 
@@ -984,16 +1025,17 @@ public class CustomOAuth2AuthenticationSuccessHandler implements AuthenticationS
         // 3. Redirect ONLY to the callback page with the token
         // The Frontend will decide where to go next based on user data
         String redirectUrl = UriComponentsBuilder.fromUriString(frontendUrl)
-                .path("/auth/callback") 
+                .path("/auth/callback")
                 .queryParam("token", token)
                 .build().toUriString();
-        
+
         response.sendRedirect(redirectUrl);
     }
 }
 ```
 
 - in backend/src/test/java/com/fractal/backend/security/CustomOAuth2AuthenticationSuccessHandlerTest.java
+
 ```
 package com.fractal.backend.security;
 
@@ -1128,23 +1170,34 @@ class CustomOAuth2AuthenticationSuccessHandlerTest {
 }
 ```
 
-created a project in google developer console called 'fractal',configured oauth concent screen, went to APIs & Services > Credentials and created oauth2 client added origin: http://localhost:8080 and redirect URI: http://localhost:8080/login/oauth2/code/google, added the credentials to .env in backend and frontend folder. 
+created a project in google developer console called 'fractal',configured oauth concent screen, went to APIs & Services > Credentials and created oauth2 client added origin: http://localhost:8080 and redirect URI: http://localhost:8080/login/oauth2/code/google, added the credentials to .env in backend and frontend folder.
 
 - in backend/src/main/java/com/fractal/backend/controller/WorkspaceController.java
+
 ```
 package com.fractal.backend.controller;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.fractal.backend.dto.CreateWorkspaceRequest;
+import com.fractal.backend.dto.InviteMemberRequest;
+import com.fractal.backend.dto.UpdateWorkspaceRequest;
 import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.model.Workspace;
@@ -1152,8 +1205,6 @@ import com.fractal.backend.service.WorkspaceService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-
-import org.springframework.web.bind.annotation.GetMapping;
 
 @RestController
 @RequestMapping("/api/workspaces")
@@ -1164,16 +1215,16 @@ public class WorkspaceController {
 
     @PostMapping
     public WorkspaceResponse createWorkspace(
-            @AuthenticationPrincipal User user,
             @Valid @RequestBody CreateWorkspaceRequest request) {
 
-        if (user == null) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
         }
-        // Call the service
+
         Workspace workspace = workspaceService.createWorkspace(user.getId(), request.getName());
 
-        // Return the response
         return WorkspaceResponse.builder()
                 .id(workspace.getId())
                 .name(workspace.getName())
@@ -1183,16 +1234,71 @@ public class WorkspaceController {
     }
 
     @GetMapping
-    public List<WorkspaceResponse> getUserWorkspaces(@AuthenticationPrincipal User user) {
-        if (user == null) {
+    public List<WorkspaceResponse> getUserWorkspaces() {
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
         }
+
         return workspaceService.getWorkspacesForUser(user.getId());
+    }
+
+    @PutMapping("/{id}")
+    public WorkspaceResponse updateWorkspace(
+            @PathVariable UUID id,
+            @RequestBody UpdateWorkspaceRequest request) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
+        }
+
+        Workspace updated = workspaceService.updateWorkspace(user.getId(), id, request.getName(), request.getSlug());
+        return WorkspaceResponse.builder().id(updated.getId()).name(updated.getName()).slug(updated.getSlug())
+                .role("UNKNOWN").build();
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteWorkspace(@PathVariable UUID id) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
+        }
+
+        workspaceService.deleteWorkspace(user.getId(), id);
+    }
+
+    @PostMapping("/{id}/invite")
+    public void inviteMember(
+            @PathVariable UUID id,
+            @Valid @RequestBody InviteMemberRequest request) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
+        }
+        workspaceService.inviteMember(user.getId(), id, request.getEmail(), request.getRole());
+    }
+
+    @PostMapping("/accept-invite")
+    public void acceptInvite(
+            @RequestParam String token) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
+        }
+        workspaceService.acceptInvitation(user.getId(), token);
     }
 }
 ```
 
 - in backend/src/main/java/com/fractal/backend/dto/CreateWorkspaceRequest.java
+
 ```
 package com.fractal.backend.dto;
 
@@ -1209,6 +1315,7 @@ public class CreateWorkspaceRequest {
 ```
 
 - in backend/src/main/java/com/fractal/backend/dto/WorkspaceResponse.java
+
 ```
 package com.fractal.backend.dto;
 
@@ -1228,6 +1335,7 @@ public class WorkspaceResponse {
 ```
 
 - in backend/src/main/java/com/fractal/backend/model/Workspace.java
+
 ```
 package com.fractal.backend.model;
 
@@ -1288,6 +1396,7 @@ public class Workspace {
 ```
 
 - in backend/src/main/java/com/fractal/backend/model/WorkspaceMember.java
+
 ```
 package com.fractal.backend.model;
 
@@ -1344,6 +1453,7 @@ public class WorkspaceMember {
 ```
 
 - in backend/src/main/java/com/fractal/backend/repository/WorkspaceMemberRepository.java
+
 ```
 package com.fractal.backend.repository;
 
@@ -1362,6 +1472,7 @@ public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember
 ```
 
 - in backend/src/main/java/com/fractal/backend/repository/WorkspaceRepository.java
+
 ```
 package com.fractal.backend.repository;
 
@@ -1382,6 +1493,7 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
 ```
 
 - in backend/src/main/java/com/fractal/backend/service/WorkspaceService.java
+
 ```
 package com.fractal.backend.service;
 
@@ -1482,6 +1594,7 @@ public class WorkspaceService {
 ```
 
 - in backend/src/test/java/com/fractal/controller/WorkspaceControllerTest.java
+
 ```
 package com.fractal.controller;
 
@@ -1609,6 +1722,7 @@ class WorkspaceControllerTest {
 ```
 
 - in backend/src/test/java/com/fractal/service/WorkspaceServiceTest.java
+
 ```
 package com.fractal.service;
 
@@ -1651,7 +1765,7 @@ class WorkspaceServiceTest {
         user.setEmail("test@fractal.com");
 
         String workspaceName = "Fractal Inc";
-        
+
         // Mock checking for slug uniqueness (return false means slug is not taken)
         when(workspaceRepository.existsBySlug(anyString())).thenReturn(false);
 
@@ -1683,6 +1797,7 @@ class WorkspaceServiceTest {
 ```
 
 - in backend/src/main/java/com/fractal/backend/controller/AuthController.java
+
 ```
 package com.fractal.backend.controller;
 
@@ -1716,6 +1831,7 @@ public class AuthController {
 ```
 
 - in backend/src/main/java/com/fractal/backend/security/JwtAuthenticationFilter.java
+
 ```
 package com.fractal.backend.security;
 
@@ -1790,6 +1906,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 ```
 
 - in backend/src/main/java/com/fractal/backend/service/JwtService.java
+
 ```
 package com.fractal.backend.service;
 
@@ -1867,11 +1984,30 @@ public class JwtService {
 }
 ```
 
+then in pom.xml:
+
+````
+  <dependency>
+            <groupId>com.sendgrid</groupId>
+            <artifactId>sendgrid-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        ```
 
 
 
 
-google login is working. 
+
+google login is working.
 
 this is the current file structure is frontend
 .
@@ -1994,7 +2130,8 @@ this is the current file structure is frontend
 
 
 - in frontend/app/(site)/auth/callback/page.tsx
-```
+````
+
 "use client";
 
 import { useEffect, useRef, Suspense } from "react";
@@ -2004,16 +2141,16 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 function AuthCallbackContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const processedRef = useRef(false);
-  const { refreshWorkspaces } = useAuth();
+const router = useRouter();
+const searchParams = useSearchParams();
+const processedRef = useRef(false);
+const { refreshWorkspaces } = useAuth();
 
-  useEffect(() => {
-    const processLogin = async () => {
-      // Prevent double execution in React Strict Mode
-      if (processedRef.current) return;
-      processedRef.current = true;
+useEffect(() => {
+const processLogin = async () => {
+// Prevent double execution in React Strict Mode
+if (processedRef.current) return;
+processedRef.current = true;
 
       // 1. Check for the token we sent from the backend
       const token = searchParams.get("token");
@@ -2053,30 +2190,32 @@ function AuthCallbackContent() {
     };
 
     processLogin();
-  }, [router, searchParams]);
 
-  return (
-    <div className="flex h-screen w-full items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-4">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-muted-foreground">Authenticating...</p>
-      </div>
-    </div>
-  );
+}, [router, searchParams]);
+
+return (
+<div className="flex h-screen w-full items-center justify-center bg-background">
+<div className="flex flex-col items-center gap-4">
+<Loader2 className="h-8 w-8 animate-spin text-primary" />
+<p className="text-muted-foreground">Authenticating...</p>
+</div>
+</div>
+);
 }
 
 export default function AuthCallbackPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <AuthCallbackContent />
-    </Suspense>
-  );
+return (
+<Suspense fallback={<div>Loading...</div>}>
+<AuthCallbackContent />
+</Suspense>
+);
 }
 
 ```
 
 - in frontend/app/welcome/new-workspace/page.tsx
 ```
+
 "use client"
 
 import React from "react"
@@ -2089,30 +2228,30 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+Card,
+CardContent,
+CardDescription,
+CardHeader,
+CardTitle,
 } from "@/components/ui/card"
 import { toast } from "sonner"
 import { ArrowRight, Building2, Loader2, Sparkles } from "lucide-react"
 
 export default function NewWorkspacePage() {
-  const router = useRouter()
-  const { user, refreshWorkspaces, setCurrentWorkspace } = useAuth()
-  const [workspaceName, setWorkspaceName] = useState("")
-  const [isCreating, setIsCreating] = useState(false)
+const router = useRouter()
+const { user, refreshWorkspaces, setCurrentWorkspace } = useAuth()
+const [workspaceName, setWorkspaceName] = useState("")
+const [isCreating, setIsCreating] = useState(false)
 
-  const generateSlug = (name: string) => {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-  }
+const generateSlug = (name: string) => {
+return name
+.toLowerCase()
+.replace(/[^a-z0-9]+/g, "-")
+.replace(/^-|-$/g, "")
+}
 
-  const handleCreateWorkspace = async (e: React.FormEvent) => {
-    e.preventDefault()
+const handleCreateWorkspace = async (e: React.FormEvent) => {
+e.preventDefault()
 
     if (!workspaceName.trim()) {
       toast.error("Please enter a workspace name")
@@ -2134,28 +2273,29 @@ export default function NewWorkspacePage() {
     } finally {
       setIsCreating(false)
     }
-  }
 
-  const slug = generateSlug(workspaceName)
+}
 
-  return (
-    <div className="min-h-screen flex flex-col bg-muted/30">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-foreground flex items-center justify-center">
-              <span className="text-background font-bold">T</span>
-            </div>
-            <span className="font-semibold">TaskFlow</span>
-          </div>
-          {user && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{user.email}</span>
-            </div>
-          )}
-        </div>
-      </header>
+const slug = generateSlug(workspaceName)
+
+return (
+<div className="min-h-screen flex flex-col bg-muted/30">
+{/_ Header _/}
+<header className="border-b bg-background/80 backdrop-blur-sm">
+<div className="container mx-auto px-4 h-16 flex items-center justify-between">
+<div className="flex items-center gap-2">
+<div className="h-8 w-8 rounded-lg bg-foreground flex items-center justify-center">
+<span className="text-background font-bold">T</span>
+</div>
+<span className="font-semibold">TaskFlow</span>
+</div>
+{user && (
+<div className="flex items-center gap-2 text-sm text-muted-foreground">
+<span>{user.email}</span>
+</div>
+)}
+</div>
+</header>
 
       {/* Main content */}
       <main className="flex-1 flex items-center justify-center px-4 py-12">
@@ -2258,204 +2398,208 @@ export default function NewWorkspacePage() {
         </div>
       </main>
     </div>
-  )
+
+)
 }
+
 ```
 
 - in frontend/lib/auth-context.tsx
 ```
+
 "use client";
 
 import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-  type ReactNode,
+createContext,
+useContext,
+useEffect,
+useState,
+useCallback,
+type ReactNode,
 } from "react";
 import { apiClient } from "./api";
 import type { User, Workspace, AuthState } from "./types";
 import { useRouter } from "next/navigation";
 
 interface AuthContextType extends AuthState {
-  login: () => void;
-  logout: () => Promise<void>;
-  setCurrentWorkspace: (workspace: Workspace) => void;
-  refreshWorkspaces: () => Promise<Workspace[]>;
-  handleAuthCallback: (code: string) => Promise<{ redirectUrl: string }>;
+login: () => void;
+logout: () => Promise<void>;
+setCurrentWorkspace: (workspace: Workspace) => void;
+refreshWorkspaces: () => Promise<Workspace[]>;
+handleAuthCallback: (code: string) => Promise<{ redirectUrl: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const router = useRouter();
-  const [state, setState] = useState<AuthState>({
-    user: null,
-    workspaces: [],
-    currentWorkspace: null,
-    isLoading: true,
-    isAuthenticated: false,
-  });
+const router = useRouter();
+const [state, setState] = useState<AuthState>({
+user: null,
+workspaces: [],
+currentWorkspace: null,
+isLoading: true,
+isAuthenticated: false,
+});
 
-  const refreshUser = useCallback(async () => {
-    try {
-      const [user, workspaces] = await Promise.all([
-        apiClient.getCurrentUser(),
-        apiClient.getUserWorkspaces(),
-      ]);
-      setState((prev) => ({
-        ...prev,
-        user,
-        workspaces,
-        isAuthenticated: true,
-        isLoading: false,
-      }));
-    } catch {
-      setState((prev) => ({
-        ...prev,
-        user: null,
-        workspaces: [],
-        isAuthenticated: false,
-        isLoading: false,
-      }));
-    }
-  }, []);
+const refreshUser = useCallback(async () => {
+try {
+const [user, workspaces] = await Promise.all([
+apiClient.getCurrentUser(),
+apiClient.getUserWorkspaces(),
+]);
+setState((prev) => ({
+...prev,
+user,
+workspaces,
+isAuthenticated: true,
+isLoading: false,
+}));
+} catch {
+setState((prev) => ({
+...prev,
+user: null,
+workspaces: [],
+isAuthenticated: false,
+isLoading: false,
+}));
+}
+}, []);
 
-  useEffect(() => {
-    if (apiClient.isAuthenticated()) {
-      refreshUser();
-    } else {
-      setState((prev) => ({ ...prev, isLoading: false }));
-    }
-  }, [refreshUser]);
+useEffect(() => {
+if (apiClient.isAuthenticated()) {
+refreshUser();
+} else {
+setState((prev) => ({ ...prev, isLoading: false }));
+}
+}, [refreshUser]);
 
-  const login = useCallback(() => {
-    window.location.href = apiClient.getGoogleAuthUrl();
-  }, []);
+const login = useCallback(() => {
+window.location.href = apiClient.getGoogleAuthUrl();
+}, []);
 
-  const logout = useCallback(async () => {
-    await apiClient.logout();
-    setState({
-      user: null,
-      workspaces: [],
-      currentWorkspace: null,
-      isLoading: false,
-      isAuthenticated: false,
-    });
-    router.replace("/");
-  }, []);
+const logout = useCallback(async () => {
+await apiClient.logout();
+setState({
+user: null,
+workspaces: [],
+currentWorkspace: null,
+isLoading: false,
+isAuthenticated: false,
+});
+router.replace("/");
+}, []);
 
-  const setCurrentWorkspace = useCallback((workspace: Workspace) => {
-    setState((prev) => ({ ...prev, currentWorkspace: workspace }));
-    if (typeof window !== "undefined") {
-      localStorage.setItem("currentWorkspaceId", workspace.id);
-    }
-  }, []);
+const setCurrentWorkspace = useCallback((workspace: Workspace) => {
+setState((prev) => ({ ...prev, currentWorkspace: workspace }));
+if (typeof window !== "undefined") {
+localStorage.setItem("currentWorkspaceId", workspace.id);
+}
+}, []);
 
-  const refreshWorkspaces = useCallback(async () => {
-    const workspaces = await apiClient.getUserWorkspaces();
-    setState((prev) => ({ ...prev, workspaces }));
-    return workspaces;
-  }, []);
+const refreshWorkspaces = useCallback(async () => {
+const workspaces = await apiClient.getUserWorkspaces();
+setState((prev) => ({ ...prev, workspaces }));
+return workspaces;
+}, []);
 
-  const handleAuthCallback = useCallback(async (code: string) => {
-    const response = await apiClient.handleOAuthCallback(code);
-    setState((prev) => ({
-      ...prev,
-      user: response.user,
-      workspaces: response.workspaces,
-      isAuthenticated: true,
-      isLoading: false,
-    }));
-    return { redirectUrl: response.redirectUrl };
-  }, []);
+const handleAuthCallback = useCallback(async (code: string) => {
+const response = await apiClient.handleOAuthCallback(code);
+setState((prev) => ({
+...prev,
+user: response.user,
+workspaces: response.workspaces,
+isAuthenticated: true,
+isLoading: false,
+}));
+return { redirectUrl: response.redirectUrl };
+}, []);
 
-  return (
-    <AuthContext.Provider
-      value={{
+return (
+<AuthContext.Provider
+value={{
         ...state,
         login,
         logout,
         setCurrentWorkspace,
         refreshWorkspaces,
         handleAuthCallback,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+      }} >
+{children}
+</AuthContext.Provider>
+);
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
+const context = useContext(AuthContext);
+if (!context) {
+throw new Error("useAuth must be used within an AuthProvider");
 }
+return context;
+}
+
 ```
 
 - in frontend/app/(site)/select-workspace/page.tsx
 ```
+
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+Card,
+CardContent,
+CardDescription,
+CardHeader,
+CardTitle,
 } from "@/components/ui/card";
 import { Building2, ChevronRight, Plus } from "lucide-react";
 import type { Workspace } from "@/lib/types";
 
 export default function SelectWorkspacePage() {
-  const router = useRouter();
-  const { user, workspaces, logout } = useAuth();
+const router = useRouter();
+const { user, workspaces, logout } = useAuth();
 
-  const handleSelectWorkspace = (workspace: Workspace) => {
-    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-    const protocol = window.location.protocol;
-    const targetUrl = `${protocol}//${workspace.slug}.${rootDomain}/dashboard`;
-    window.location.href = targetUrl;
-  };
+const handleSelectWorkspace = (workspace: Workspace) => {
+const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+const protocol = window.location.protocol;
+const targetUrl = `${protocol}//${workspace.slug}.${rootDomain}/dashboard`;
+window.location.href = targetUrl;
+};
 
-  const handleCreateNew = () => {
-    router.push("/welcome/new-workspace");
-  };
+const handleCreateNew = () => {
+router.push("/welcome/new-workspace");
+};
 
-  const handleLogout = async () => {
-    await logout();
-    router.push("/login");
-  };
+const handleLogout = async () => {
+await logout();
+router.push("/login");
+};
 
-  return (
-    <div className="min-h-screen flex flex-col bg-muted/30">
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-foreground flex items-center justify-center">
-              <span className="text-background font-bold">T</span>
-            </div>
-            <span className="font-semibold">TaskFlow</span>
-          </div>
-          <div className="flex items-center gap-4">
-            {user && (
-              <span className="text-sm text-muted-foreground">
-                {user.email}
-              </span>
-            )}
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
-              Sign out
-            </Button>
-          </div>
-        </div>
-      </header>
+return (
+<div className="min-h-screen flex flex-col bg-muted/30">
+{/_ Header _/}
+<header className="border-b bg-background/80 backdrop-blur-sm">
+<div className="container mx-auto px-4 h-16 flex items-center justify-between">
+<div className="flex items-center gap-2">
+<div className="h-8 w-8 rounded-lg bg-foreground flex items-center justify-center">
+<span className="text-background font-bold">T</span>
+</div>
+<span className="font-semibold">TaskFlow</span>
+</div>
+<div className="flex items-center gap-4">
+{user && (
+<span className="text-sm text-muted-foreground">
+{user.email}
+</span>
+)}
+<Button variant="ghost" size="sm" onClick={handleLogout}>
+Sign out
+</Button>
+</div>
+</div>
+</header>
 
       {/* Main content */}
       <main className="flex-1 flex items-center justify-center px-4 py-12">
@@ -2515,13 +2659,15 @@ export default function SelectWorkspacePage() {
         </div>
       </main>
     </div>
-  );
+
+);
 }
 
 ```
 
 - in frontend/app/[domain]/dashboard/page.tsx
 ```
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -2532,18 +2678,18 @@ import { DashboardContent } from "@/components/dashboard/dashboard-content";
 import { getSubdomain } from "@/lib/utils"; // Make sure you import this
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const {
-    isAuthenticated,
-    isLoading,
-    workspaces,
-    currentWorkspace,
-    setCurrentWorkspace,
-  } = useAuth();
-  const [isWorkspaceResolved, setIsWorkspaceResolved] = useState(false);
+const router = useRouter();
+const {
+isAuthenticated,
+isLoading,
+workspaces,
+currentWorkspace,
+setCurrentWorkspace,
+} = useAuth();
+const [isWorkspaceResolved, setIsWorkspaceResolved] = useState(false);
 
-  useEffect(() => {
-    if (isLoading) return;
+useEffect(() => {
+if (isLoading) return;
 
     if (!isAuthenticated) {
       const rootDomain =
@@ -2588,55 +2734,58 @@ export default function DashboardPage() {
       router.push("/select-workspace");
     }
     // --- NEW LOGIC END ---
-  }, [
-    isAuthenticated,
-    isLoading,
-    workspaces,
-    currentWorkspace,
-    setCurrentWorkspace,
-    router,
-  ]);
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-2">
-          <div className="animate-pulse text-muted-foreground">
-            Authenticating...
-          </div>
-        </div>
-      </div>
-    );
-  }
+}, [
+isAuthenticated,
+isLoading,
+workspaces,
+currentWorkspace,
+setCurrentWorkspace,
+router,
+]);
 
-  if (isLoading || !isWorkspaceResolved) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-2">
-          <div className="animate-pulse text-muted-foreground">
-            Loading Workspace...
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <DashboardLayout>
-      <DashboardContent />
-    </DashboardLayout>
-  );
+if (!isAuthenticated) {
+return (
+<div className="min-h-screen flex items-center justify-center bg-background">
+<div className="flex flex-col items-center gap-2">
+<div className="animate-pulse text-muted-foreground">
+Authenticating...
+</div>
+</div>
+</div>
+);
 }
+
+if (isLoading || !isWorkspaceResolved) {
+return (
+<div className="min-h-screen flex items-center justify-center bg-background">
+<div className="flex flex-col items-center gap-2">
+<div className="animate-pulse text-muted-foreground">
+Loading Workspace...
+</div>
+</div>
+</div>
+);
+}
+
+return (
+<DashboardLayout>
+<DashboardContent />
+</DashboardLayout>
+);
+}
+
 ```
 
 - in frontend/lib/api.ts
 ```
+
 import type {
-  LoginResponse,
-  CreateWorkspaceRequest,
-  CreateWorkspaceResponse,
-  User,
-  Workspace,
+LoginResponse,
+CreateWorkspaceRequest,
+CreateWorkspaceResponse,
+User,
+Workspace,
 } from "./types";
 import Cookies from "js-cookie";
 import { getCookieDomain } from "./utils";
@@ -2644,39 +2793,39 @@ import { getCookieDomain } from "./utils";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 class ApiClient {
-  private accessToken: string | null = null;
+private accessToken: string | null = null;
 
-  setAccessToken(token: string | null) {
-    this.accessToken = token;
-    if (token) {
-      Cookies.set("accessToken", token, {
-        expires: 7,
-        domain: getCookieDomain(),
-        sameSite: "Lax",
-      });
-    } else {
-      this.logout();
-    }
-  }
+setAccessToken(token: string | null) {
+this.accessToken = token;
+if (token) {
+Cookies.set("accessToken", token, {
+expires: 7,
+domain: getCookieDomain(),
+sameSite: "Lax",
+});
+} else {
+this.logout();
+}
+}
 
-  getAccessToken(): string | null {
-    if (this.accessToken) return this.accessToken;
-    const token = Cookies.get("accessToken");
-    if (token) {
-      this.accessToken = token;
-      return token;
-    }
-    return null;
-  }
-  private async fetch<T>(
-    endpoint: string,
-    options: RequestInit = {},
-  ): Promise<T> {
-    const token = this.getAccessToken();
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-      ...options.headers,
-    };
+getAccessToken(): string | null {
+if (this.accessToken) return this.accessToken;
+const token = Cookies.get("accessToken");
+if (token) {
+this.accessToken = token;
+return token;
+}
+return null;
+}
+private async fetch<T>(
+endpoint: string,
+options: RequestInit = {},
+): Promise<T> {
+const token = this.getAccessToken();
+const headers: HeadersInit = {
+"Content-Type": "application/json",
+...options.headers,
+};
 
     if (token) {
       (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
@@ -2694,63 +2843,66 @@ class ApiClient {
     }
 
     return response.json();
-  }
 
-  // Auth endpoints
-  getGoogleAuthUrl(): string {
-    const redirectUri =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/auth/callback`
-        : "";
-    return `${API_BASE_URL}/oauth2/authorization/google?redirect_uri=${encodeURIComponent(redirectUri)}`;
-  }
+}
 
-  async handleOAuthCallback(code: string): Promise<LoginResponse> {
-    const response = await this.fetch<LoginResponse>(
-      "/api/auth/oauth/callback",
-      {
-        method: "POST",
-        body: JSON.stringify({ code }),
-      },
-    );
-    this.setAccessToken(response.accessToken);
-    return response;
-  }
+// Auth endpoints
+getGoogleAuthUrl(): string {
+const redirectUri =
+typeof window !== "undefined"
+? `${window.location.origin}/auth/callback`
+: "";
+return `${API_BASE_URL}/oauth2/authorization/google?redirect_uri=${encodeURIComponent(redirectUri)}`;
+}
 
-  async getCurrentUser(): Promise<User> {
-    return this.fetch<User>("/api/auth/me");
-  }
+async handleOAuthCallback(code: string): Promise<LoginResponse> {
+const response = await this.fetch<LoginResponse>(
+"/api/auth/oauth/callback",
+{
+method: "POST",
+body: JSON.stringify({ code }),
+},
+);
+this.setAccessToken(response.accessToken);
+return response;
+}
 
-  async getUserWorkspaces(): Promise<Workspace[]> {
-    return this.fetch<Workspace[]>("/api/workspaces");
-  }
+async getCurrentUser(): Promise<User> {
+return this.fetch<User>("/api/auth/me");
+}
 
-  async createWorkspace(
-    data: CreateWorkspaceRequest,
-  ): Promise<CreateWorkspaceResponse> {
-    return this.fetch<CreateWorkspaceResponse>("/api/workspaces", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
+async getUserWorkspaces(): Promise<Workspace[]> {
+return this.fetch<Workspace[]>("/api/workspaces");
+}
 
-  logout() {
-    this.accessToken = null;
-    Cookies.remove("accessToken", { domain: getCookieDomain() });
-    Cookies.remove("accessToken"); // Fallback cleanup
-  }
+async createWorkspace(
+data: CreateWorkspaceRequest,
+): Promise<CreateWorkspaceResponse> {
+return this.fetch<CreateWorkspaceResponse>("/api/workspaces", {
+method: "POST",
+body: JSON.stringify(data),
+});
+}
 
-  // Check if user is authenticated
-  isAuthenticated(): boolean {
-    return !!this.getAccessToken();
-  }
+logout() {
+this.accessToken = null;
+Cookies.remove("accessToken", { domain: getCookieDomain() });
+Cookies.remove("accessToken"); // Fallback cleanup
+}
+
+// Check if user is authenticated
+isAuthenticated(): boolean {
+return !!this.getAccessToken();
+}
 }
 
 export const apiClient = new ApiClient();
+
 ```
 
-Till this point everything is done and implemented by me. i want your help after this point. 
+Till this point everything is done and implemented by me. i want your help after this point.
 
 Run spring boot using: ./mvnw spring-boot:run
 
-I want you to complete the backend for workspace.. basically all other operations like inviting people to workspace, CRUD operations like updating the name, deleting the workspace etc. accoring to the original plan. Please go step by step for the backend. 
+I want you to complete the backend for workspace.. basically all other operations like inviting people to workspace, CRUD operations like updating the name, deleting the workspace etc. accoring to the original plan. Please go step by step for the backend.
+```
