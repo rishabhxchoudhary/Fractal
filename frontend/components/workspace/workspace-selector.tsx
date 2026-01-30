@@ -43,6 +43,15 @@ export function WorkspaceSelector({ className }: WorkspaceSelectorProps) {
     window.location.href = `${protocol}//${rootDomain}/welcome/new-workspace`;
   };
 
+  const handleWorkspaceSettings = () => {
+    if (!currentWorkspace) return;
+    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+    const protocol = window.location.protocol;
+
+    // Redirect to the workspace settings page
+    window.location.href = `${protocol}//${currentWorkspace.slug}.${rootDomain}/settings`;
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -92,7 +101,7 @@ export function WorkspaceSelector({ className }: WorkspaceSelectorProps) {
           <Plus className="h-4 w-4 mr-2" />
           Create new workspace
         </DropdownMenuItem>
-        <DropdownMenuItem className="cursor-pointer">
+        <DropdownMenuItem onClick={handleWorkspaceSettings} className="cursor-pointer">
           <Settings className="h-4 w-4 mr-2" />
           Workspace settings
         </DropdownMenuItem>

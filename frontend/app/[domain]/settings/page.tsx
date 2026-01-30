@@ -122,13 +122,29 @@ export default function WorkspaceSettingsPage() {
       }
 
       await apiClient.deleteWorkspace(currentWorkspace.id);
-      await refreshWorkspaces();
       toast.success("Workspace deleted successfully!");
 
-      // Redirect to workspace selection
-      const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-      const protocol = window.location.protocol;
-      window.location.href = `${protocol}//${rootDomain}/select-workspace`;
+      // Refresh workspaces and redirect appropriately
+      try {
+        const workspaces = await refreshWorkspaces();
+        if (workspaces.length === 0) {
+          // No workspaces left, redirect to create new workspace
+          const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+          const protocol = window.location.protocol;
+          window.location.href = `${protocol}//${rootDomain}/welcome/new-workspace`;
+        } else {
+          // Workspaces still exist, redirect to select workspace
+          const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+          const protocol = window.location.protocol;
+          window.location.href = `${protocol}//${rootDomain}/select-workspace`;
+        }
+      } catch (e) {
+        // If fetching fails, default to select-workspace
+        console.warn("Could not fetch workspaces, redirecting to select-workspace", e);
+        const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+        const protocol = window.location.protocol;
+        window.location.href = `${protocol}//${rootDomain}/select-workspace`;
+      }
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to delete workspace",
@@ -386,10 +402,11 @@ export default function WorkspaceSettingsPage() {
           </AlertDialogHeader>
           <div className="flex gap-3">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            <Button
+              variant="destructive"
               onClick={handleDeleteWorkspace}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={isDeleting}
+              className="text-white"
             >
               {isDeleting ? (
                 <>
@@ -399,7 +416,7 @@ export default function WorkspaceSettingsPage() {
               ) : (
                 "Delete Workspace"
               )}
-            </AlertDialogAction>
+            </Button>
           </div>
         </AlertDialogContent>
       </AlertDialog>
