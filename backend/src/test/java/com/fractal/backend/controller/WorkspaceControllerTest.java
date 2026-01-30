@@ -1,5 +1,6 @@
 package com.fractal.backend.controller;
 
+import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -27,7 +28,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fractal.backend.dto.CreateWorkspaceRequest;
 import com.fractal.backend.dto.InviteMemberRequest;
+import com.fractal.backend.dto.TransferOwnershipRequest;
+import com.fractal.backend.dto.UpdateMemberRoleRequest;
 import com.fractal.backend.dto.UpdateWorkspaceRequest;
+import com.fractal.backend.dto.WorkspaceMemberDTO;
 import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.model.Workspace;
@@ -50,16 +54,21 @@ class WorkspaceControllerTest {
         @MockitoBean
         private JwtAuthenticationFilter jwtAuthenticationFilter;
 
-        @Test
-        void createWorkspace_ShouldReturnCreatedWorkspace() throws Exception {
-                UUID userId = UUID.randomUUID();
-
+        // --- HELPER FOR AUTH MOCKING ---
+        private User setupMockUser(UUID userId) {
                 User user = new User();
                 user.setId(userId);
                 user.setEmail("test@fractal.com");
 
                 SecurityContextHolder.getContext().setAuthentication(
                                 new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+                return user;
+        }
+
+        @Test
+        void createWorkspace_ShouldReturnCreatedWorkspace() throws Exception {
+                UUID userId = UUID.randomUUID();
+                setupMockUser(userId);
 
                 Workspace workspace = Workspace.builder()
                                 .id(UUID.randomUUID())
@@ -85,13 +94,7 @@ class WorkspaceControllerTest {
         @Test
         void getUserWorkspaces_ShouldReturnList() throws Exception {
                 UUID userId = UUID.randomUUID();
-
-                User user = new User();
-                user.setId(userId);
-                user.setEmail("test@fractal.com");
-
-                SecurityContextHolder.getContext().setAuthentication(
-                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+                setupMockUser(userId);
 
                 WorkspaceResponse ws = WorkspaceResponse.builder()
                                 .id(UUID.randomUUID())
@@ -112,12 +115,7 @@ class WorkspaceControllerTest {
         void updateWorkspace_ShouldReturnUpdatedWorkspace() throws Exception {
                 UUID userId = UUID.randomUUID();
                 UUID workspaceId = UUID.randomUUID();
-
-                User user = new User();
-                user.setId(userId);
-
-                SecurityContextHolder.getContext().setAuthentication(
-                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+                setupMockUser(userId);
 
                 Workspace updatedWorkspace = Workspace.builder()
                                 .id(workspaceId)
@@ -148,12 +146,7 @@ class WorkspaceControllerTest {
         void deleteWorkspace_ShouldReturnNoContent() throws Exception {
                 UUID userId = UUID.randomUUID();
                 UUID workspaceId = UUID.randomUUID();
-
-                User user = new User();
-                user.setId(userId);
-
-                SecurityContextHolder.getContext().setAuthentication(
-                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+                setupMockUser(userId);
 
                 doNothing().when(workspaceService).deleteWorkspace(eq(userId), eq(workspaceId));
 
@@ -162,16 +155,91 @@ class WorkspaceControllerTest {
                                 .andExpect(status().isNoContent());
         }
 
+        // --- MEMBER MANAGEMENT TESTS ---
+
+        @Test
+        void getWorkspaceMembers_ShouldReturnList() throws Exception {
+                UUID userId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+                setupMockUser(userId);
+
+                WorkspaceMemberDTO memberDTO = WorkspaceMemberDTO.builder()
+                                .id(UUID.randomUUID())
+                                .email("member@fractal.com")
+                                .fullName("John Doe")
+                                .role("MEMBER")
+                                .joinedAt(OffsetDateTime.now())
+                                .build();
+
+                when(workspaceService.getWorkspaceMembers(eq(userId), eq(workspaceId)))
+                                .thenReturn(List.of(memberDTO));
+
+                mockMvc.perform(get("/api/workspaces/" + workspaceId + "/members"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$[0].email").value("member@fractal.com"))
+                                .andExpect(jsonPath("$[0].role").value("MEMBER"));
+        }
+
+        @Test
+        void removeMember_ShouldReturnNoContent() throws Exception {
+                UUID userId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+                UUID targetMemberId = UUID.randomUUID();
+                setupMockUser(userId);
+
+                doNothing().when(workspaceService).removeMember(eq(userId), eq(workspaceId), eq(targetMemberId));
+
+                mockMvc.perform(delete("/api/workspaces/" + workspaceId + "/members/" + targetMemberId)
+                                .with(csrf()))
+                                .andExpect(status().isNoContent());
+        }
+
+        @Test
+        void updateMemberRole_ShouldReturnOk() throws Exception {
+                UUID userId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+                UUID targetMemberId = UUID.randomUUID();
+                setupMockUser(userId);
+
+                doNothing().when(workspaceService).updateMemberRole(eq(userId), eq(workspaceId), eq(targetMemberId),
+                                eq("ADMIN"));
+
+                UpdateMemberRoleRequest request = new UpdateMemberRoleRequest();
+                request.setRole("ADMIN");
+
+                mockMvc.perform(put("/api/workspaces/" + workspaceId + "/members/" + targetMemberId)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk());
+        }
+
+        @Test
+        void transferOwnership_ShouldReturnOk() throws Exception {
+                UUID userId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+                UUID newOwnerId = UUID.randomUUID();
+                setupMockUser(userId);
+
+                doNothing().when(workspaceService).transferOwnership(eq(userId), eq(workspaceId), eq(newOwnerId));
+
+                TransferOwnershipRequest request = new TransferOwnershipRequest();
+                request.setNewOwnerId(newOwnerId);
+
+                mockMvc.perform(post("/api/workspaces/" + workspaceId + "/transfer-ownership")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk());
+        }
+
+        // --- INVITATION TESTS ---
+
         @Test
         void inviteMember_ShouldReturnOk() throws Exception {
                 UUID userId = UUID.randomUUID();
                 UUID workspaceId = UUID.randomUUID();
-
-                User user = new User();
-                user.setId(userId);
-
-                SecurityContextHolder.getContext().setAuthentication(
-                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+                setupMockUser(userId);
 
                 doNothing().when(workspaceService).inviteMember(eq(userId), eq(workspaceId), eq("new@example.com"),
                                 eq("MEMBER"));
@@ -190,12 +258,7 @@ class WorkspaceControllerTest {
         @Test
         void acceptInvite_ShouldReturnOk() throws Exception {
                 UUID userId = UUID.randomUUID();
-
-                User user = new User();
-                user.setId(userId);
-
-                SecurityContextHolder.getContext().setAuthentication(
-                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+                setupMockUser(userId);
 
                 WorkspaceMember member = WorkspaceMember.builder().build();
 
