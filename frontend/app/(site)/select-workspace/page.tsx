@@ -25,7 +25,7 @@ export default function SelectWorkspacePage() {
   };
 
   const handleCreateNew = () => {
-    router.push("/welcome/new-workspace");
+    router.push("/create-workspace");
   };
 
   const handleLogout = async () => {

@@ -1,7 +1,6 @@
 "use client"
 
 import React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
@@ -19,7 +18,7 @@ import {
 import { toast } from "sonner"
 import { ArrowRight, Building2, Loader2, Sparkles } from "lucide-react"
 
-export default function NewWorkspacePage() {
+export default function CreateWorkspacePage() {
   const router = useRouter()
   const { user, refreshWorkspaces, setCurrentWorkspace } = useAuth()
   const [workspaceName, setWorkspaceName] = useState("")
@@ -89,15 +88,14 @@ export default function NewWorkspacePage() {
           <div className="text-center space-y-2">
             <div className="flex items-center justify-center mb-4">
               <div className="h-16 w-16 rounded-2xl bg-foreground/5 flex items-center justify-center">
-                <Sparkles className="h-8 w-8 text-foreground" />
+                <Building2 className="h-8 w-8 text-foreground" />
               </div>
             </div>
             <h1 className="text-3xl font-bold tracking-tight">
-              Create your first workspace
+              Create a new workspace
             </h1>
             <p className="text-muted-foreground max-w-md mx-auto">
-              Workspaces are shared environments where you and your team can
-              collaborate on tasks and projects.
+              Create a new workspace to organize different projects and teams.
             </p>
           </div>
 
@@ -109,7 +107,7 @@ export default function NewWorkspacePage() {
                 Workspace details
               </CardTitle>
               <CardDescription>
-                Choose a name for your workspace. You can always change this
+                Choose a name for your new workspace. You can always change this
                 later.
               </CardDescription>
             </CardHeader>
@@ -161,25 +159,6 @@ export default function NewWorkspacePage() {
               </form>
             </CardContent>
           </Card>
-
-          {/* Tips */}
-          <div className="bg-background border rounded-lg p-4 space-y-3">
-            <h3 className="font-medium text-sm">Tips for workspace names</h3>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li className="flex items-start gap-2">
-                <span className="text-foreground">1.</span>
-                Use your company or team name for easy recognition
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-foreground">2.</span>
-                Keep it short and memorable for quick access
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-foreground">3.</span>
-                You can create multiple workspaces for different projects
-              </li>
-            </ul>
-          </div>
         </div>
       </main>
     </div>

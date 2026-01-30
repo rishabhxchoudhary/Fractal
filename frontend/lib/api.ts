@@ -60,12 +60,23 @@ class ApiClient {
       throw new Error(error.message || `API Error: ${response.status}`);
     }
 
-    // Handle 204 No Content responses
-    if (response.status === 204) {
+    // Handle 204 No Content and other status codes with empty body
+    if (response.status === 204 || response.status === 200 && response.headers.get('content-length') === '0') {
       return undefined as T;
     }
 
-    return response.json();
+    // Check if response has content
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return undefined as T;
+    }
+
+    try {
+      return await response.json();
+    } catch (e) {
+      // If JSON parsing fails, return undefined
+      return undefined as T;
+    }
   }
 
   // Auth endpoints

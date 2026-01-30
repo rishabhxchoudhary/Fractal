@@ -125,15 +125,14 @@ export default function WorkspaceSettingsPage() {
       // Refresh workspaces and redirect appropriately
       try {
         const workspaces = await refreshWorkspaces();
+        const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
+        const protocol = window.location.protocol;
+        
         if (workspaces.length === 0) {
-          // No workspaces left, redirect to create new workspace
-          const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-          const protocol = window.location.protocol;
+          // No workspaces left, redirect to first-time workspace creation
           window.location.href = `${protocol}//${rootDomain}/welcome/new-workspace`;
         } else {
           // Workspaces still exist, redirect to select workspace
-          const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-          const protocol = window.location.protocol;
           window.location.href = `${protocol}//${rootDomain}/select-workspace`;
         }
       } catch (e) {

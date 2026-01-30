@@ -38,9 +38,8 @@ export function WorkspaceSelector({ className }: WorkspaceSelectorProps) {
     const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
     const protocol = window.location.protocol;
 
-    // Redirect to the root domain to create a new workspace
-    // (The /welcome/new-workspace route exists under (site))
-    window.location.href = `${protocol}//${rootDomain}/welcome/new-workspace`;
+    // Redirect to create a new workspace
+    window.location.href = `${protocol}//${rootDomain}/create-workspace`;
   };
 
   const handleWorkspaceSettings = () => {
