@@ -9,14 +9,17 @@ export interface Workspace {
   id: string
   name: string
   slug: string
-  createdAt: string
+  role: "OWNER" | "ADMIN" | "MEMBER" | "VIEWER"
+  createdAt?: string
 }
 
 export interface WorkspaceMember {
   id: string
-  userId: string
-  workspaceId: string
-  role: "OWNER" | "ADMIN" | "MEMBER"
+  email: string
+  fullName: string
+  avatarUrl?: string
+  role: "OWNER" | "ADMIN" | "MEMBER" | "VIEWER"
+  joinedAt: string
 }
 
 export interface AuthState {

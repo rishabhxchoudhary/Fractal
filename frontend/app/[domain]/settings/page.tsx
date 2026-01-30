@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { apiClient } from "@/lib/api";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
+import type { WorkspaceMember } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,7 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { AlertTriangle, Loader2, Mail, Users } from "lucide-react";
+import { AlertTriangle, Loader2, Mail, Users, Trash2, Shield } from "lucide-react";
 import { getSubdomain } from "@/lib/utils";
 
 export default function WorkspaceSettingsPage() {
@@ -52,14 +53,31 @@ export default function WorkspaceSettingsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("MEMBER");
   const [isInviting, setIsInviting] = useState(false);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
 
   // Initialize form with current workspace data
   useEffect(() => {
     if (currentWorkspace) {
       setWorkspaceName(currentWorkspace.name);
       setWorkspaceSlug(currentWorkspace.slug);
+      loadMembers();
     }
   }, [currentWorkspace]);
+
+  const loadMembers = async () => {
+    if (!currentWorkspace) return;
+    setIsLoadingMembers(true);
+    try {
+      const membersList = await apiClient.getWorkspaceMembers(currentWorkspace.id);
+      setMembers(membersList);
+    } catch (error) {
+      console.error("Failed to load members:", error);
+      toast.error("Failed to load workspace members");
+    } finally {
+      setIsLoadingMembers(false);
+    }
+  };
 
   const handleUpdateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,13 +178,6 @@ export default function WorkspaceSettingsPage() {
       return;
     }
 
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(inviteEmail)) {
-      toast.error("Please enter a valid email address");
-      return;
-    }
-
     setIsInviting(true);
 
     try {
@@ -179,12 +190,41 @@ export default function WorkspaceSettingsPage() {
       toast.success(`Invitation sent to ${inviteEmail}!`);
       setInviteEmail("");
       setInviteRole("MEMBER");
+      await loadMembers();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to send invitation",
       );
     } finally {
       setIsInviting(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string, memberEmail: string) => {
+    if (!currentWorkspace) return;
+
+    try {
+      await apiClient.removeMember(currentWorkspace.id, userId);
+      toast.success(`Removed ${memberEmail} from workspace`);
+      await loadMembers();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to remove member",
+      );
+    }
+  };
+
+  const handleUpdateMemberRole = async (userId: string, newRole: string) => {
+    if (!currentWorkspace) return;
+
+    try {
+      await apiClient.updateMemberRole(currentWorkspace.id, userId, newRole);
+      toast.success("Member role updated successfully");
+      await loadMembers();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update member role",
+      );
     }
   };
 
@@ -358,15 +398,76 @@ export default function WorkspaceSettingsPage() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Member List</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                      <Shield className="h-5 w-5" />
+                      Workspace Members
+                    </CardTitle>
                     <CardDescription>
-                      API to list members coming soon
+                      Manage members and their roles
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      Member management UI will be available once the backend API for listing members is implemented.
-                    </p>
+                    {isLoadingMembers ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : members.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No members yet. Invite someone to get started!
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {members.map((member) => (
+                          <div
+                            key={member.id}
+                            className="flex items-center justify-between p-4 border rounded-lg"
+                          >
+                            <div className="flex flex-col gap-1">
+                              <p className="font-medium">{member.fullName}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {member.email}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              {member.role !== "OWNER" && (
+                                <>
+                                  <Select
+                                    value={member.role}
+                                    onValueChange={(newRole) =>
+                                      handleUpdateMemberRole(member.id, newRole)
+                                    }
+                                  >
+                                    <SelectTrigger className="w-32">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="MEMBER">Member</SelectItem>
+                                      <SelectItem value="ADMIN">Admin</SelectItem>
+                                      <SelectItem value="VIEWER">Viewer</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleRemoveMember(member.id, member.email)
+                                    }
+                                    className="text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
+                              {member.role === "OWNER" && (
+                                <span className="text-sm font-semibold text-blue-600">
+                                  Owner
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>

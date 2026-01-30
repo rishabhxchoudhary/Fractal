@@ -4,6 +4,7 @@ import type {
   CreateWorkspaceResponse,
   User,
   Workspace,
+  WorkspaceMember,
 } from "./types";
 import Cookies from "js-cookie";
 import { getCookieDomain } from "./utils";
@@ -148,6 +149,34 @@ class ApiClient {
   async acceptInvite(token: string): Promise<void> {
     return this.fetch<void>(`/api/workspaces/accept-invite?token=${encodeURIComponent(token)}`, {
       method: "POST",
+    });
+  }
+
+  async getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
+    return this.fetch<WorkspaceMember[]>(`/api/workspaces/${workspaceId}/members`);
+  }
+
+  async removeMember(workspaceId: string, userId: string): Promise<void> {
+    return this.fetch<void>(`/api/workspaces/${workspaceId}/members/${userId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async updateMemberRole(
+    workspaceId: string,
+    userId: string,
+    role: string,
+  ): Promise<void> {
+    return this.fetch<void>(`/api/workspaces/${workspaceId}/members/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async transferOwnership(workspaceId: string, newOwnerId: string): Promise<void> {
+    return this.fetch<void>(`/api/workspaces/${workspaceId}/transfer-ownership`, {
+      method: "POST",
+      body: JSON.stringify({ newOwnerId }),
     });
   }
 
