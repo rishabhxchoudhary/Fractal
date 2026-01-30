@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Loader2 } from "lucide-react"
+import { redirectToRoot } from "@/lib/utils"
 
 export default function HomePage() {
   const router = useRouter()
@@ -12,7 +13,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
-        router.push("/login")
+        redirectToRoot("/login");
       } else if (workspaces.length === 0) {
         router.push("/welcome/new-workspace")
       } else if (workspaces.length === 1) {

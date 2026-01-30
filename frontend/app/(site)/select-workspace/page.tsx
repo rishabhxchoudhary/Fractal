@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { redirectToRoot } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,10 +19,7 @@ export default function SelectWorkspacePage() {
   const { user, workspaces, logout } = useAuth();
 
   const handleSelectWorkspace = (workspace: Workspace) => {
-    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-    const protocol = window.location.protocol;
-    const targetUrl = `${protocol}//${workspace.slug}.${rootDomain}/dashboard`;
-    window.location.href = targetUrl;
+    redirectToWorkspace(workspace.slug, "/dashboard");
   };
 
   const handleCreateNew = () => {
@@ -30,7 +28,7 @@ export default function SelectWorkspacePage() {
 
   const handleLogout = async () => {
     await logout();
-    router.push("/login");
+    redirectToRoot("/login");
   };
 
   return (

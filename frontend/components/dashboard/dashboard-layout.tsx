@@ -3,6 +3,7 @@
 import type { ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { redirectToRoot } from "@/lib/utils"
 import { WorkspaceSelector } from "@/components/workspace/workspace-selector"
 import { Button } from "@/components/ui/button"
 import {
@@ -38,7 +39,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const handleLogout = async () => {
     await logout()
-    router.push("/login")
+    redirectToRoot("/login")
   }
 
   const navItems = [

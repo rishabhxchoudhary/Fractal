@@ -83,7 +83,8 @@ public class WorkspaceService {
     }
 
     public List<WorkspaceMemberDTO> getWorkspaceMembers(UUID requesterId, UUID workspaceId) {
-        validateRole(workspaceId, requesterId, List.of("OWNER", "ADMIN", "MEMBER", "VIEWER"));
+        // All members (OWNER, ADMIN, MEMBER) can view workspace members
+        validateRole(workspaceId, requesterId, List.of("OWNER", "ADMIN", "MEMBER"));
         return workspaceMemberRepository.findMembersByWorkspaceId(workspaceId);
     }
 
@@ -106,8 +107,16 @@ public class WorkspaceService {
 
     @Transactional
     public void updateMemberRole(UUID requesterId, UUID workspaceId, UUID targetUserId, String newRole) {
-        // Only Owner/Admin can change roles
-        validateRole(workspaceId, requesterId, List.of("OWNER", "ADMIN"));
+        // Only OWNER can update member roles
+        validateRole(workspaceId, requesterId, List.of("OWNER"));
+
+        // Validate new role is valid (must be ADMIN or MEMBER, not OWNER)
+        validateRoleValue(newRole);
+        
+        if ("OWNER".equals(newRole)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Ownership transfer must be done via specific endpoint");
+        }
 
         WorkspaceMember targetMember = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, targetUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Member not found"));
@@ -116,13 +125,7 @@ public class WorkspaceService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot change role of the Workspace Owner");
         }
 
-        // Prevent Admin from promoting themselves to Owner or demoting Owner
-        if ("OWNER".equals(newRole)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Ownership transfer must be done via specific endpoint");
-        }
-
-        targetMember.setRole(newRole);
+        targetMember.setRole(newRole.toUpperCase());
         workspaceMemberRepository.save(targetMember);
     }
 
@@ -137,28 +140,19 @@ public class WorkspaceService {
 
         // Logic:
         // 1. User can leave (requester == target), unless they are OWNER
-        // 2. OWNER can remove anyone.
-        // 3. ADMIN can remove MEMBER or VIEWER.
+        // 2. Only OWNER can remove other members
 
         if (requesterId.equals(targetUserId)) {
-            // Leaving
+            // Leaving - any member can leave except OWNER
             if ("OWNER".equals(target.getRole())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Owner cannot leave workspace. Delete workspace or transfer ownership.");
             }
         } else {
-            // Kicking
-            if ("OWNER".equals(requester.getRole())) {
-                // Owner can kick anyone
-            } else if ("ADMIN".equals(requester.getRole())) {
-                // Admin can only kick non-admins/non-owners
-                if ("OWNER".equals(target.getRole()) || "ADMIN".equals(target.getRole())) {
-                    throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                            "Admins cannot remove other Admins or Owner");
-                }
-            } else {
-                // Members/Viewers cannot kick
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Insufficient permissions to remove members");
+            // Removing another member - only OWNER can do this
+            if (!"OWNER".equals(requester.getRole())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Only workspace owners can remove members");
             }
         }
 
@@ -177,7 +171,22 @@ public class WorkspaceService {
     // --- INVITATIONS ---
     @Transactional
     public void inviteMember(UUID requesterId, UUID workspaceId, String email, String role) {
+        // OWNER and ADMIN can invite members
         validateRole(workspaceId, requesterId, List.of("OWNER", "ADMIN"));
+        
+        // Validate role value
+        validateRoleValue(role);
+        
+        // Only OWNER can invite ADMIN
+        WorkspaceMember requester = workspaceMemberRepository
+                .findByWorkspaceIdAndUserId(workspaceId, requesterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a member"));
+        
+        if ("ADMIN".equals(role) && !"OWNER".equals(requester.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only workspace owners can invite admins");
+        }
+        
         Workspace workspace = getWorkspaceOrThrow(workspaceId);
 
         Optional<User> existingUser = userRepository.findByEmail(email);
@@ -248,6 +257,23 @@ public class WorkspaceService {
 
         if (!allowedRoles.contains(member.getRole()))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Insufficient permissions");
+    }
+
+    /**
+     * Validates that the role value is one of the allowed roles: OWNER, ADMIN, or MEMBER
+     * @param role The role to validate
+     * @throws ResponseStatusException if role is invalid
+     */
+    private void validateRoleValue(String role) {
+        if (role == null || role.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Role cannot be null or empty");
+        }
+        
+        List<String> validRoles = List.of("OWNER", "ADMIN", "MEMBER");
+        if (!validRoles.contains(role.toUpperCase())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Invalid role. Allowed roles are: OWNER, ADMIN, MEMBER");
+        }
     }
 
     private String toSlug(String input) {

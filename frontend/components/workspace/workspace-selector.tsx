@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { cn } from "@/lib/utils";
+import { cn, redirectToRoot, redirectToWorkspace } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -29,28 +29,19 @@ export function WorkspaceSelector({ className }: WorkspaceSelectorProps) {
     // If selecting the current one, do nothing
     if (workspace.id === currentWorkspace?.id) return;
 
-    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-    const protocol = window.location.protocol;
-
     // Force full browser redirect to the workspace subdomain
-    window.location.href = `${protocol}//${workspace.slug}.${rootDomain}/dashboard`;
+    redirectToWorkspace(workspace.slug, "/dashboard");
   };
 
   const handleCreateNew = () => {
-    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-    const protocol = window.location.protocol;
-
     // Redirect to create a new workspace
-    window.location.href = `${protocol}//${rootDomain}/create-workspace`;
+    redirectToRoot("/create-workspace");
   };
 
   const handleWorkspaceSettings = () => {
     if (!currentWorkspace) return;
-    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-    const protocol = window.location.protocol;
-
     // Redirect to the workspace settings page
-    window.location.href = `${protocol}//${currentWorkspace.slug}.${rootDomain}/settings`;
+    redirectToWorkspace(currentWorkspace.slug, "/settings");
   };
 
   return (

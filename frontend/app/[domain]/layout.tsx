@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { getSubdomain } from "@/lib/utils";
+import { getSubdomain, redirectToRoot } from "@/lib/utils";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 
 export default function DomainLayout({
@@ -25,10 +25,7 @@ export default function DomainLayout({
     if (isLoading) return;
 
     if (!isAuthenticated) {
-      const rootDomain =
-        process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-      const protocol = window.location.protocol;
-      window.location.href = `${protocol}//${rootDomain}/login`;
+      redirectToRoot("/login");
       return;
     }
 
@@ -49,18 +46,12 @@ export default function DomainLayout({
       } else {
         // User does not have access to this specific subdomain workspace
         console.warn(`User does not have access to workspace: ${subdomain}`);
-        const rootDomain =
-          process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-        const protocol = window.location.protocol;
-        window.location.href = `${protocol}//${rootDomain}/select-workspace`;
+        redirectToRoot("/select-workspace");
       }
     } else {
       // No subdomain found
       console.log("no subdomain found");
-      const rootDomain =
-        process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-      const protocol = window.location.protocol;
-      window.location.href = `${protocol}//${rootDomain}/select-workspace`;
+      redirectToRoot("/select-workspace");
     }
   }, [
     isAuthenticated,

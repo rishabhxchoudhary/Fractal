@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { redirectToRoot } from "@/lib/utils";
 
 function AuthCallbackContent() {
   const router = useRouter();
@@ -25,7 +26,7 @@ function AuthCallbackContent() {
         // If we still have the old "error" param or no token
         const error = searchParams.get("error");
         console.error("Auth Error:", error || "No token found");
-        router.push("/login?error=" + (error || "no_token"));
+        redirectToRoot("/login", { error: error || "no_token" });
         return;
       }
 
@@ -52,7 +53,7 @@ function AuthCallbackContent() {
         // Note: currentRole is automatically set by refreshWorkspaces in auth-context
       } catch (error) {
         console.error("Failed to process login", error);
-        router.push("/login?error=auth_failed");
+        redirectToRoot("/login", { error: "auth_failed" });
       }
     };
 

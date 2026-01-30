@@ -60,3 +60,56 @@ export const getCookieDomain = () => {
   const root = getRootDomain().split(":")[0]; // "lvh.me"
   return `.${root}`; // Returns ".lvh.me" -> Shared across all subdomains
 };
+
+/**
+ * Redirects to a path on the root domain (e.g., /login, /select-workspace)
+ * Use this for cross-subdomain navigation where Next.js router won't work
+ * 
+ * @param path - The path to redirect to (e.g., "/login", "/select-workspace")
+ * @param queryParams - Optional query parameters as an object (e.g., { error: "auth_failed" })
+ * 
+ * @example
+ * redirectToRoot("/login")
+ * redirectToRoot("/login", { error: "auth_failed" })
+ */
+export const redirectToRoot = (path: string, queryParams?: Record<string, string>) => {
+  if (typeof window === "undefined") {
+    console.warn("redirectToRoot called on server side");
+    return;
+  }
+
+  const rootDomain = getRootDomain();
+  const protocol = window.location.protocol;
+  
+  let url = `${protocol}//${rootDomain}${path}`;
+  
+  if (queryParams && Object.keys(queryParams).length > 0) {
+    const params = new URLSearchParams(queryParams);
+    url += `?${params.toString()}`;
+  }
+  
+  window.location.href = url;
+};
+
+/**
+ * Redirects to a path on a specific workspace subdomain
+ * 
+ * @param workspaceSlug - The workspace slug (subdomain)
+ * @param path - The path to redirect to (e.g., "/dashboard", "/settings")
+ * 
+ * @example
+ * redirectToWorkspace("my-workspace", "/dashboard")
+ * redirectToWorkspace("my-workspace", "/settings")
+ */
+export const redirectToWorkspace = (workspaceSlug: string, path: string = "/dashboard") => {
+  if (typeof window === "undefined") {
+    console.warn("redirectToWorkspace called on server side");
+    return;
+  }
+
+  const rootDomain = getRootDomain();
+  const protocol = window.location.protocol;
+  const url = `${protocol}//${workspaceSlug}.${rootDomain}${path}`;
+  
+  window.location.href = url;
+};

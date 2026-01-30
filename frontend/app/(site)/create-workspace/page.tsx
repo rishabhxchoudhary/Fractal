@@ -5,6 +5,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { apiClient } from "@/lib/api"
+import { redirectToRoot } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -48,9 +49,7 @@ export default function CreateWorkspacePage() {
         setCurrentWorkspace(response.workspace)
       }
       toast.success("Workspace created successfully!")
-      const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-      const protocol = window.location.protocol;
-      window.location.href = `${protocol}//${rootDomain}/select-workspace`;
+      redirectToRoot("/select-workspace");
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to create workspace"

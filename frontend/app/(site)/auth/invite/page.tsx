@@ -4,6 +4,7 @@ import React, { useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { redirectToRoot } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -60,10 +61,7 @@ function InviteAcceptanceContent() {
 
         // Redirect to workspace selection after 2 seconds
         setTimeout(() => {
-          const rootDomain =
-            process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-          const protocol = window.location.protocol;
-          window.location.href = `${protocol}//${rootDomain}/select-workspace`;
+          redirectToRoot("/select-workspace");
         }, 2000);
       } catch (error) {
         console.error("Failed to accept invite:", error);
@@ -87,9 +85,7 @@ function InviteAcceptanceContent() {
   };
 
   const handleBackToLogin = () => {
-    const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-    const protocol = window.location.protocol;
-    window.location.href = `${protocol}//${rootDomain}/login`;
+    redirectToRoot("/login");
   };
 
   return (

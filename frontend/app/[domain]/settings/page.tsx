@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { AlertTriangle, Loader2, Mail, Users, Trash2, Shield } from "lucide-react";
+import { AlertTriangle, Loader2, Mail, Users, Trash2, Shield, Crown } from "lucide-react";
 import { PermissionGuard } from "@/components/rbac/permission-guard";
 import { WorkspacePermission } from "@/lib/permissions";
 import {
@@ -50,6 +50,7 @@ import {
   useCanUpdateMemberRoles,
 } from "@/lib/hooks/use-permissions";
 import { RoleBadge } from "@/components/rbac/role-badge";
+import { redirectToRoot, redirectToWorkspace } from "@/lib/utils";
 
 export default function WorkspaceSettingsPage() {
   const router = useRouter();
@@ -72,6 +73,12 @@ export default function WorkspaceSettingsPage() {
   const [isInviting, setIsInviting] = useState(false);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [transferEmail, setTransferEmail] = useState("");
+  const [confirmTransferEmail, setConfirmTransferEmail] = useState("");
+  const [memberToRemove, setMemberToRemove] = useState<{ id: string; email: string; name: string } | null>(null);
+  const [showRemoveMemberDialog, setShowRemoveMemberDialog] = useState(false);
 
   // Initialize form with current workspace data
   useEffect(() => {
@@ -136,10 +143,7 @@ export default function WorkspaceSettingsPage() {
 
       // If slug changed, redirect to new subdomain
       if (slugChanged) {
-        const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-        const protocol = window.location.protocol;
-        const targetUrl = `${protocol}//${workspaceSlug}.${rootDomain}/settings`;
-        window.location.href = targetUrl;
+        redirectToWorkspace(workspaceSlug, "/settings");
       }
     } catch (error) {
       toast.error(
@@ -170,22 +174,18 @@ export default function WorkspaceSettingsPage() {
       // Refresh workspaces and redirect appropriately
       try {
         const workspaces = await refreshWorkspaces();
-        const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-        const protocol = window.location.protocol;
         
         if (workspaces.length === 0) {
           // No workspaces left, redirect to first-time workspace creation
-          window.location.href = `${protocol}//${rootDomain}/welcome/new-workspace`;
+          redirectToRoot("/welcome/new-workspace");
         } else {
           // Workspaces still exist, redirect to select workspace
-          window.location.href = `${protocol}//${rootDomain}/select-workspace`;
+          redirectToRoot("/select-workspace");
         }
       } catch (e) {
         // If fetching fails, default to select-workspace
         console.warn("Could not fetch workspaces, redirecting to select-workspace", e);
-        const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-        const protocol = window.location.protocol;
-        window.location.href = `${protocol}//${rootDomain}/select-workspace`;
+        redirectToRoot("/select-workspace");
       }
     } catch (error) {
       toast.error(
@@ -238,8 +238,13 @@ export default function WorkspaceSettingsPage() {
     }
   };
 
-  const handleRemoveMember = async (userId: string, memberEmail: string) => {
-    if (!currentWorkspace) return;
+  const handleRemoveMemberClick = (userId: string, memberEmail: string, memberName: string) => {
+    setMemberToRemove({ id: userId, email: memberEmail, name: memberName });
+    setShowRemoveMemberDialog(true);
+  };
+
+  const handleRemoveMember = async () => {
+    if (!currentWorkspace || !memberToRemove) return;
 
     if (!canRemoveMembers) {
       toast.error("Only workspace owners can remove members");
@@ -247,9 +252,11 @@ export default function WorkspaceSettingsPage() {
     }
 
     try {
-      await apiClient.removeMember(currentWorkspace.id, userId);
-      toast.success(`Removed ${memberEmail} from workspace`);
+      await apiClient.removeMember(currentWorkspace.id, memberToRemove.id);
+      toast.success(`Removed ${memberToRemove.email} from workspace`);
       await loadMembers();
+      setShowRemoveMemberDialog(false);
+      setMemberToRemove(null);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to remove member",
@@ -273,6 +280,67 @@ export default function WorkspaceSettingsPage() {
       toast.error(
         error instanceof Error ? error.message : "Failed to update member role",
       );
+    }
+  };
+
+  const handleTransferOwnershipClick = () => {
+    setTransferEmail("");
+    setConfirmTransferEmail("");
+    setShowTransferDialog(true);
+  };
+
+  const handleTransferOwnership = async () => {
+    if (!currentWorkspace) return;
+
+    // Validate email is provided
+    if (!transferEmail.trim()) {
+      toast.error("Please enter the email of the member to transfer ownership to");
+      return;
+    }
+
+    // Validate confirmation email matches
+    if (transferEmail.trim().toLowerCase() !== confirmTransferEmail.trim().toLowerCase()) {
+      toast.error("Email confirmation does not match");
+      return;
+    }
+
+    // Find the member by email
+    const targetMember = members.find(
+      (m) => m.email.toLowerCase() === transferEmail.trim().toLowerCase()
+    );
+
+    if (!targetMember) {
+      toast.error("Member with this email not found in workspace");
+      return;
+    }
+
+    if (targetMember.role === "OWNER") {
+      toast.error("This member is already the owner");
+      return;
+    }
+
+    setIsTransferring(true);
+
+    try {
+      await apiClient.transferOwnership(currentWorkspace.id, targetMember.id);
+      toast.success("Ownership transferred successfully!");
+      
+      // Refresh workspaces to get updated role
+      await refreshWorkspaces();
+      
+      // Close dialog and reset
+      setShowTransferDialog(false);
+      setTransferEmail("");
+      setConfirmTransferEmail("");
+      
+      // Redirect to dashboard since user is no longer owner
+      redirectToWorkspace(currentWorkspace.slug, "/dashboard");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to transfer ownership",
+      );
+    } finally {
+      setIsTransferring(false);
     }
   };
 
@@ -358,6 +426,43 @@ export default function WorkspaceSettingsPage() {
                     </form>
                   </CardContent>
                 </Card>
+                </PermissionGuard>
+
+                {/* Transfer Ownership - Only visible to OWNER */}
+                <PermissionGuard permission={WorkspacePermission.DELETE_WORKSPACE}>
+                  <Card className="border-amber-500/50 bg-amber-500/5">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
+                        <Crown className="h-5 w-5" />
+                        Transfer Ownership
+                      </CardTitle>
+                      <CardDescription>
+                        Transfer workspace ownership to another member
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                          Transfer ownership of this workspace to another member. You will become an Admin after the transfer. This action cannot be undone.
+                        </p>
+                        {members.filter(m => m.role !== "OWNER").length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            No other members available. Invite a member first to transfer ownership.
+                          </p>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            onClick={handleTransferOwnershipClick}
+                            disabled={isLoadingMembers || isTransferring}
+                            className="border-amber-500 text-amber-600 hover:bg-amber-500/10 dark:text-amber-500"
+                          >
+                            <Crown className="h-4 w-4 mr-2" />
+                            Transfer Ownership
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
                 </PermissionGuard>
 
                 {/* Danger Zone - Only visible to OWNER */}
@@ -518,7 +623,7 @@ export default function WorkspaceSettingsPage() {
                                       variant="ghost"
                                       size="sm"
                                       onClick={() =>
-                                        handleRemoveMember(member.id, member.email)
+                                        handleRemoveMemberClick(member.id, member.email, member.fullName)
                                       }
                                       className="text-destructive hover:text-destructive"
                                     >
@@ -567,6 +672,110 @@ export default function WorkspaceSettingsPage() {
                 ) : (
                   "Delete Workspace"
                 )}
+              </Button>
+            </div>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Transfer Ownership Confirmation Dialog */}
+        <AlertDialog open={showTransferDialog} onOpenChange={(open) => {
+          setShowTransferDialog(open);
+          if (!open) {
+            setTransferEmail("");
+            setConfirmTransferEmail("");
+          }
+        }}>
+          <AlertDialogContent className="sm:max-w-[500px]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Transfer Ownership</AlertDialogTitle>
+              <AlertDialogDescription>
+                Transfer ownership of this workspace to another member. You will become an Admin after the transfer. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="transfer-email">Member Email</Label>
+                <Input
+                  id="transfer-email"
+                  type="email"
+                  placeholder="member@example.com"
+                  value={transferEmail}
+                  onChange={(e) => setTransferEmail(e.target.value)}
+                  disabled={isTransferring}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter the email address of the member you want to transfer ownership to
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-transfer-email">Confirm Email</Label>
+                <Input
+                  id="confirm-transfer-email"
+                  type="email"
+                  placeholder="member@example.com"
+                  value={confirmTransferEmail}
+                  onChange={(e) => setConfirmTransferEmail(e.target.value)}
+                  disabled={isTransferring}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Type the email again to confirm
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <AlertDialogCancel disabled={isTransferring} onClick={() => {
+                setTransferEmail("");
+                setConfirmTransferEmail("");
+              }}>Cancel</AlertDialogCancel>
+              <Button
+                variant="outline"
+                onClick={handleTransferOwnership}
+                disabled={isTransferring || !transferEmail.trim() || !confirmTransferEmail.trim()}
+                className="border-amber-500 text-amber-600 hover:bg-amber-500/10 dark:text-amber-500"
+              >
+                {isTransferring ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Transferring...
+                  </>
+                ) : (
+                  <>
+                    <Crown className="h-4 w-4 mr-2" />
+                    Transfer Ownership
+                  </>
+                )}
+              </Button>
+            </div>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Remove Member Confirmation Dialog */}
+        <AlertDialog open={showRemoveMemberDialog} onOpenChange={(open) => {
+          setShowRemoveMemberDialog(open);
+          if (!open) {
+            setMemberToRemove(null);
+          }
+        }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove Member?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {memberToRemove && (
+                  <>
+                    Are you sure you want to remove <strong>{memberToRemove.name || memberToRemove.email}</strong> from this workspace? This action cannot be undone.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex gap-3">
+              <AlertDialogCancel onClick={() => setMemberToRemove(null)}>Cancel</AlertDialogCancel>
+              <Button
+                variant="destructive"
+                onClick={handleRemoveMember}
+                className="text-white"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Remove Member
               </Button>
             </div>
           </AlertDialogContent>
