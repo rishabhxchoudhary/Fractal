@@ -3333,5 +3333,4 @@ Till this point everything is done and implemented by me. i want your help after
 
 Run spring boot using: ./mvnw spring-boot:run
 
-I want you to complete the backend for workspace.. basically all other operations like inviting people to workspace, CRUD operations like updating the name, deleting the workspace etc. accoring to the original plan. Please go step by step for the backend.
-```
+I want you to complete the backend for workspace.. basically all other operations like inviting people to workspace, CRUD operations like updating the name, deleting the workspace etc. accoring to the original plan. Please go step by step for the backend. I some apis that are missing are listing down members of a workspace, changing their roles.. also some apis need to be updated like listing workspaces of a user should also check what other workspaces he has already been invited to and accepted the invitations... do a complte code review and make sure I am following the industry level best practices.

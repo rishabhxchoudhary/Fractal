@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.fractal.backend.dto.WorkspaceMemberDTO;
 import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.model.Workspace;
@@ -66,6 +67,26 @@ public class WorkspaceService {
         return savedWorkspace;
     }
 
+    public List<WorkspaceResponse> getWorkspacesForUser(UUID userId) {
+        List<Workspace> workspaces = workspaceRepository.findAllActiveWorkspacesByUserId(userId);
+
+        return workspaces.stream().map(w -> {
+            WorkspaceMember member = workspaceMemberRepository
+                    .findByWorkspaceIdAndUserId(w.getId(), userId).orElse(null);
+            return WorkspaceResponse.builder()
+                    .id(w.getId())
+                    .name(w.getName())
+                    .slug(w.getSlug())
+                    .role(member != null ? member.getRole() : "UNKNOWN")
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    public List<WorkspaceMemberDTO> getWorkspaceMembers(UUID requesterId, UUID workspaceId) {
+        validateRole(workspaceId, requesterId, List.of("OWNER", "ADMIN", "MEMBER", "VIEWER"));
+        return workspaceMemberRepository.findMembersByWorkspaceId(workspaceId);
+    }
+
     @Transactional
     public Workspace updateWorkspace(UUID userId, UUID workspaceId, String newName, String newSlug) {
         validateRole(workspaceId, userId, List.of("OWNER", "ADMIN"));
@@ -84,6 +105,68 @@ public class WorkspaceService {
     }
 
     @Transactional
+    public void updateMemberRole(UUID requesterId, UUID workspaceId, UUID targetUserId, String newRole) {
+        // Only Owner/Admin can change roles
+        validateRole(workspaceId, requesterId, List.of("OWNER", "ADMIN"));
+
+        WorkspaceMember targetMember = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Member not found"));
+
+        if ("OWNER".equals(targetMember.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot change role of the Workspace Owner");
+        }
+
+        // Prevent Admin from promoting themselves to Owner or demoting Owner
+        if ("OWNER".equals(newRole)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Ownership transfer must be done via specific endpoint");
+        }
+
+        targetMember.setRole(newRole);
+        workspaceMemberRepository.save(targetMember);
+    }
+
+    // --- MEMBER MANAGEMENT (REMOVE MEMBER) ---
+    @Transactional
+    public void removeMember(UUID requesterId, UUID workspaceId, UUID targetUserId) {
+        WorkspaceMember requester = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, requesterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a member"));
+
+        WorkspaceMember target = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Member not found"));
+
+        // Logic:
+        // 1. User can leave (requester == target), unless they are OWNER
+        // 2. OWNER can remove anyone.
+        // 3. ADMIN can remove MEMBER or VIEWER.
+
+        if (requesterId.equals(targetUserId)) {
+            // Leaving
+            if ("OWNER".equals(target.getRole())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Owner cannot leave workspace. Delete workspace or transfer ownership.");
+            }
+        } else {
+            // Kicking
+            if ("OWNER".equals(requester.getRole())) {
+                // Owner can kick anyone
+            } else if ("ADMIN".equals(requester.getRole())) {
+                // Admin can only kick non-admins/non-owners
+                if ("OWNER".equals(target.getRole()) || "ADMIN".equals(target.getRole())) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                            "Admins cannot remove other Admins or Owner");
+                }
+            } else {
+                // Members/Viewers cannot kick
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Insufficient permissions to remove members");
+            }
+        }
+
+        workspaceMemberRepository.delete(target);
+    }
+
+    // --- DELETE WORKSPACE ---
+    @Transactional
     public void deleteWorkspace(UUID userId, UUID workspaceId) {
         validateRole(workspaceId, userId, List.of("OWNER"));
         Workspace workspace = getWorkspaceOrThrow(workspaceId);
@@ -91,27 +174,24 @@ public class WorkspaceService {
         workspaceRepository.save(workspace);
     }
 
+    // --- INVITATIONS ---
     @Transactional
     public void inviteMember(UUID requesterId, UUID workspaceId, String email, String role) {
         validateRole(workspaceId, requesterId, List.of("OWNER", "ADMIN"));
         Workspace workspace = getWorkspaceOrThrow(workspaceId);
 
-        // 1. Check if user is already a member
         Optional<User> existingUser = userRepository.findByEmail(email);
         if (existingUser.isPresent()) {
-            boolean isMember = workspaceMemberRepository.findById(
-                    new WorkspaceMember.WorkspaceMemberId(workspaceId, existingUser.get().getId())).isPresent();
+            boolean isMember = workspaceMemberRepository
+                    .findByWorkspaceIdAndUserId(workspaceId, existingUser.get().getId()).isPresent();
             if (isMember) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is already a member");
             }
         }
 
-        // If I have already invited this specific person (email) to this specific
-        // workspace (workspaceId), delete that old invitation before creating a new one
         workspaceInvitationRepository.deleteByWorkspaceIdAndEmail(workspaceId, email);
 
         String token = UUID.randomUUID().toString();
-
         WorkspaceInvitation invitation = WorkspaceInvitation.builder()
                 .workspaceId(workspaceId)
                 .email(email)
@@ -122,21 +202,24 @@ public class WorkspaceService {
                 .build();
 
         workspaceInvitationRepository.save(invitation);
-
         emailService.sendWorkspaceInvite(email, workspace.getName(), token);
     }
 
-    // --- ACCEPT INVITE ---
     @Transactional
     public WorkspaceMember acceptInvitation(UUID userId, String token) {
         WorkspaceInvitation invitation = workspaceInvitationRepository.findByToken(token)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid invitation"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid or expired invitation"));
 
         if (invitation.getExpiresAt().isBefore(OffsetDateTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invitation expired");
         }
 
-        // Add Member
+        // Check if already member
+        if (workspaceMemberRepository.findByWorkspaceIdAndUserId(invitation.getWorkspaceId(), userId).isPresent()) {
+            workspaceInvitationRepository.delete(invitation);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You are already a member of this workspace");
+        }
+
         WorkspaceMember member = WorkspaceMember.builder()
                 .workspaceId(invitation.getWorkspaceId())
                 .userId(userId)
@@ -159,8 +242,10 @@ public class WorkspaceService {
 
     private void validateRole(UUID workspaceId, UUID userId, List<String> allowedRoles) {
         WorkspaceMember member = workspaceMemberRepository
-                .findById(new WorkspaceMember.WorkspaceMemberId(workspaceId, userId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a member"));
+                .findByWorkspaceIdAndUserId(workspaceId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Access denied: Not a member of this workspace"));
+
         if (!allowedRoles.contains(member.getRole()))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Insufficient permissions");
     }
@@ -171,16 +256,40 @@ public class WorkspaceService {
         return NONLATIN.matcher(normalized).replaceAll("").toLowerCase(Locale.ENGLISH);
     }
 
-    public List<WorkspaceResponse> getWorkspacesForUser(UUID userId) {
-        return workspaceMemberRepository.findAllByUserId(userId).stream()
-                .map(member -> {
-                    Workspace w = workspaceRepository.findById(member.getWorkspaceId()).orElse(null);
-                    if (w == null || w.getDeletedAt() != null)
-                        return null;
-                    return WorkspaceResponse.builder()
-                            .id(w.getId()).name(w.getName()).slug(w.getSlug()).role(member.getRole()).build();
-                })
-                .filter(res -> res != null)
-                .collect(Collectors.toList());
+    @Transactional
+    public void transferOwnership(UUID currentOwnerId, UUID workspaceId, UUID newOwnerId) {
+        // 1. Validate the Workspace
+        Workspace workspace = getWorkspaceOrThrow(workspaceId);
+
+        // 2. Validate Current Owner (Must be the actual owner)
+        if (!workspace.getOwnerId().equals(currentOwnerId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the current owner can transfer ownership");
+        }
+
+        // 3. Validate New Owner (Must be a member of the workspace)
+        WorkspaceMember newOwnerMember = workspaceMemberRepository
+                .findByWorkspaceIdAndUserId(workspaceId, newOwnerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "New owner must be a member of the workspace"));
+
+        // 4. Get Current Owner Member Record
+        WorkspaceMember currentOwnerMember = workspaceMemberRepository
+                .findByWorkspaceIdAndUserId(workspaceId, currentOwnerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Current owner member record not found"));
+
+        // 5. Swap Roles
+        // Demote current owner to ADMIN (safest default)
+        currentOwnerMember.setRole("ADMIN");
+        // Promote new owner to OWNER
+        newOwnerMember.setRole("OWNER");
+
+        // 6. Update Workspace Table
+        workspace.setOwnerId(newOwnerId);
+
+        // 7. Save Changes
+        workspaceMemberRepository.save(currentOwnerMember);
+        workspaceMemberRepository.save(newOwnerMember);
+        workspaceRepository.save(workspace);
     }
 }
