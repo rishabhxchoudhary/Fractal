@@ -974,7 +974,7 @@ public class SecurityConfig {
         @Order(1)
         public SecurityFilterChain oauth2SecurityFilterChain(HttpSecurity http) throws Exception {
                 http
-                                .securityMatcher("/oauth2/**")
+                                .securityMatcher("/oauth2/**", "/login/**")
                                 .cors(cors -> cors.disable())
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
@@ -2067,7 +2067,7 @@ public class EmailService {
     public void sendWorkspaceInvite(String toEmail, String workspaceName, String inviteToken) {
         String inviteLink = frontendUrl + "/auth/invite?token=" + inviteToken;
 
-        Email from = new Email("no-reply@fractal.com"); // Use a verified sender ID in SendGrid
+        Email from = new Email("rishabh26072003@gmail.com"); // Use a verified sender ID in SendGrid
         String subject = "You've been invited to join " + workspaceName;
         Email to = new Email(toEmail);
 
