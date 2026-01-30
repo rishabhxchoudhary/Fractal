@@ -34,7 +34,7 @@ public class SecurityConfig {
         @Order(1)
         public SecurityFilterChain oauth2SecurityFilterChain(HttpSecurity http) throws Exception {
                 http
-                                .securityMatcher("/oauth2/**")
+                                .securityMatcher("/oauth2/**", "/login/**")
                                 .cors(cors -> cors.disable())
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
