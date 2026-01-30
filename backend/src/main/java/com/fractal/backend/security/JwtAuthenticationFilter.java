@@ -31,10 +31,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @lombok.NonNull HttpServletResponse response,
             @lombok.NonNull FilterChain filterChain) throws ServletException, IOException {
 
+        // --- DEBUG LOG 1: Entry Point ---
+        System.out.println(">>> [JWT FILTER] Entered filter for URI: " + request.getRequestURI());
+
         final String authHeader = request.getHeader("Authorization");
+
+        // --- DEBUG LOG 2: Check Header ---
+        System.out.println(">>> [JWT FILTER] Authorization Header found: " + (authHeader != null));
+
         final String jwt;
         final String userEmail;
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            // --- DEBUG LOG 3: No Token Logic ---
+            System.out.println(">>> [JWT FILTER] No Bearer token found. Passing request down the chain.");
             filterChain.doFilter(request, response);
             return;
         }
@@ -47,7 +56,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
                 // 3. Load user from DB
-                // Ideally use a UserDetailsService, but we can fetch directly for now
                 User user = userRepository.findByEmail(userEmail).orElse(null);
 
                 if (user != null && jwtService.isTokenValid(jwt, user.getEmail())) {
@@ -58,13 +66,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+
+                    System.out.println(">>> [JWT FILTER] User authenticated successfully via JWT: " + userEmail);
                 }
             }
         } catch (Exception e) {
             // Token invalid or expired
-            logger.error("Cannot set user authentication: {}", e);
+            System.err.println(">>> [JWT FILTER] Exception processing token: " + e.getMessage());
         }
 
+        // --- DEBUG LOG 4: Chain Continuation ---
+        System.out.println(">>> [JWT FILTER] Proceeding with filter chain...");
         filterChain.doFilter(request, response);
     }
 }

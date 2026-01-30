@@ -5,8 +5,11 @@ import java.util.List;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -16,58 +19,77 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
 import com.fractal.backend.security.JwtAuthenticationFilter;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 
 @Configuration
 @EnableWebSecurity
-@RequiredArgsConstructor // Add this for constructor injection
+@RequiredArgsConstructor
 public class SecurityConfig {
 
-    // Inject your custom success handler
-    private final CustomOAuth2AuthenticationSuccessHandler customOAuth2AuthenticationSuccessHandler;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+        private final CustomOAuth2AuthenticationSuccessHandler customOAuth2AuthenticationSuccessHandler;
+        private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-                // 0. Enable CORS
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .csrf(csrf -> csrf.disable())
-                // 1. Authorize Requests
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/health").permitAll()
-                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/api/**").permitAll() // Allow
-                                                                                                             // OPTIONS
-                                                                                                             // for CORS
-                                                                                                             // preflight
-                        .requestMatchers("/api/**").authenticated()
-                        .anyRequest().permitAll())
-                // 2. Configure OAuth2 Login
-                .oauth2Login(oauth2 -> {
-                    // Tell Spring Security to use your custom success handler
-                    oauth2.successHandler(customOAuth2AuthenticationSuccessHandler);
-                })
+        @Bean
+        @Order(1)
+        public SecurityFilterChain oauth2SecurityFilterChain(HttpSecurity http) throws Exception {
+                http
+                                .securityMatcher("/oauth2/**")
+                                .cors(cors -> cors.disable())
+                                .csrf(csrf -> csrf.disable())
+                                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                                .oauth2Login(oauth2 -> oauth2.successHandler(customOAuth2AuthenticationSuccessHandler));
+                return http.build();
+        }
 
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        @Bean
+        @Order(2)
+        public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
+                http
+                                .securityMatcher("/api/**")
+                                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                                .csrf(csrf -> csrf.disable())
 
-        return http.build();
-    }
+                                // 🚫 NO REDIRECTS — API behavior
+                                .exceptionHandling(ex -> ex
+                                                .authenticationEntryPoint((request, response, authException) -> {
+                                                        // --- DEBUG LOG START ---
+                                                        System.err.println(
+                                                                        ">>> [SECURITY ERROR] 401 Unauthorized Triggered in EntryPoint");
+                                                        System.err.println(">>> [SECURITY ERROR] Exception: "
+                                                                        + authException.getMessage());
+                                                        System.err.println(">>> [SECURITY ERROR] Request URI: "
+                                                                        + request.getRequestURI());
+                                                        // --- DEBUG LOG END ---
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of(
-                "http://localhost:3000", // Keep localhost for safety
-                "http://lvh.me:3000", // Main domain
-                "http://*.lvh.me:3000", // All subdomains,
-                "https://app.rishabhxchoudhary.com",
-                "https://*.app.rishabhxchoudhary.com"
-        ));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*")); // Allow all headers
-        configuration.setAllowCredentials(true); // Allow credentials (cookies, authorization headers)
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", configuration); // Apply CORS to /api paths
-        return source;
-    }
+                                                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                                                }))
+
+                                .sessionManagement(session -> session
+                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .authorizeHttpRequests(auth -> auth
+                                                .requestMatchers("/api/health").permitAll()
+                                                .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
+                                                .anyRequest().authenticated())
+                                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+                return http.build();
+        }
+
+        @Bean
+        public CorsConfigurationSource corsConfigurationSource() {
+                CorsConfiguration configuration = new CorsConfiguration();
+                configuration.setAllowedOriginPatterns(List.of(
+                                "http://localhost:3000",
+                                "http://lvh.me:3000",
+                                "http://*.lvh.me:3000",
+                                "https://app.rishabhxchoudhary.com",
+                                "https://*.app.rishabhxchoudhary.com"));
+                configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+                configuration.setAllowedHeaders(List.of("*"));
+                configuration.setAllowCredentials(true);
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+                source.registerCorsConfiguration("/api/**", configuration);
+                return source;
+        }
 }

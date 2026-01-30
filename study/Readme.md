@@ -2753,3 +2753,4 @@ Till this point everything is done and implemented by me. i want your help after
 
 Run spring boot using: ./mvnw spring-boot:run
 
+I want you to complete the backend for workspace.. basically all other operations like inviting people to workspace, CRUD operations like updating the name, deleting the workspace etc. accoring to the original plan. Please go step by step for the backend. 
