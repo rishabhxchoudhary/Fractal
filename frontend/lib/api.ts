@@ -101,6 +101,44 @@ class ApiClient {
     });
   }
 
+  async updateWorkspace(
+    id: string,
+    name: string,
+    slug: string,
+  ): Promise<Workspace> {
+    return this.fetch<Workspace>(`/api/workspaces/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name, slug }),
+    });
+  }
+
+  async deleteWorkspace(id: string): Promise<void> {
+    return this.fetch<void>(`/api/workspaces/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async inviteMember(
+    workspaceId: string,
+    email: string,
+    role: string,
+  ): Promise<void> {
+    return this.fetch<void>(`/api/workspaces/${workspaceId}/invite`, {
+      method: "POST",
+      body: JSON.stringify({ email, role }),
+    });
+  }
+
+  async acceptInvite(token: string): Promise<void> {
+    return this.fetch<void>("/api/workspaces/accept-invite", {
+      method: "POST",
+      body: JSON.stringify({}),
+      headers: {
+        "X-Invite-Token": token,
+      },
+    });
+  }
+
   logout() {
     this.accessToken = null;
     Cookies.remove("accessToken", { domain: getCookieDomain() });

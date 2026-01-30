@@ -45,6 +45,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { icon: ListTodo, label: "My Tasks", href: "/dashboard/tasks" },
   ]
 
+  const handleSettingsClick = () => {
+    router.push("/settings")
+  }
+
   return (
     <div className="min-h-screen flex bg-background">
       {/* Sidebar */}
@@ -95,6 +99,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <Button
             variant="ghost"
             className="w-full justify-start gap-2 text-muted-foreground h-9"
+            onClick={handleSettingsClick}
           >
             <Settings className="h-4 w-4" />
             <span>Settings</span>
@@ -144,7 +149,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   <User className="h-4 w-4 mr-2" />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSettingsClick}>
                   <Settings className="h-4 w-4 mr-2" />
                   Settings
                 </DropdownMenuItem>
