@@ -1257,7 +1257,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.fractal.backend.dto.CreateWorkspaceRequest;
 import com.fractal.backend.dto.InviteMemberRequest;
+import com.fractal.backend.dto.TransferOwnershipRequest;
+import com.fractal.backend.dto.UpdateMemberRoleRequest;
 import com.fractal.backend.dto.UpdateWorkspaceRequest;
+import com.fractal.backend.dto.WorkspaceMemberDTO;
 import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.model.Workspace;
@@ -1273,16 +1276,20 @@ public class WorkspaceController {
 
     private final WorkspaceService workspaceService;
 
-    @PostMapping
-    public WorkspaceResponse createWorkspace(
-            @Valid @RequestBody CreateWorkspaceRequest request) {
-
+    // --- HELPER FOR AUTH CHECK ---
+    private User getAuthenticatedUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof User)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
         }
+        return (User) authentication.getPrincipal();
+    }
 
+    // --- WORKSPACE CRUD ---
+
+    @PostMapping
+    public WorkspaceResponse createWorkspace(@Valid @RequestBody CreateWorkspaceRequest request) {
+        User user = getAuthenticatedUser(); // Using helper to reduce code duplication, but same logic
         Workspace workspace = workspaceService.createWorkspace(user.getId(), request.getName());
 
         return WorkspaceResponse.builder()
@@ -1295,13 +1302,7 @@ public class WorkspaceController {
 
     @GetMapping
     public List<WorkspaceResponse> getUserWorkspaces() {
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
-        }
-
+        User user = getAuthenticatedUser();
         return workspaceService.getWorkspacesForUser(user.getId());
     }
 
@@ -1309,51 +1310,131 @@ public class WorkspaceController {
     public WorkspaceResponse updateWorkspace(
             @PathVariable UUID id,
             @RequestBody UpdateWorkspaceRequest request) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
-        }
-
+        User user = getAuthenticatedUser();
         Workspace updated = workspaceService.updateWorkspace(user.getId(), id, request.getName(), request.getSlug());
-        return WorkspaceResponse.builder().id(updated.getId()).name(updated.getName()).slug(updated.getSlug())
-                .role("UNKNOWN").build();
+        return WorkspaceResponse.builder()
+                .id(updated.getId())
+                .name(updated.getName())
+                .slug(updated.getSlug())
+                .role("UNKNOWN")
+                .build();
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteWorkspace(@PathVariable UUID id) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
-        }
-
+        User user = getAuthenticatedUser();
         workspaceService.deleteWorkspace(user.getId(), id);
     }
+
+    // --- MEMBER MANAGEMENT ---
+
+    @GetMapping("/{id}/members")
+    public List<WorkspaceMemberDTO> getWorkspaceMembers(@PathVariable UUID id) {
+        User user = getAuthenticatedUser();
+        return workspaceService.getWorkspaceMembers(user.getId(), id);
+    }
+
+    @DeleteMapping("/{id}/members/{targetUserId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeMember(
+            @PathVariable UUID id,
+            @PathVariable UUID targetUserId) {
+        User user = getAuthenticatedUser();
+        workspaceService.removeMember(user.getId(), id, targetUserId);
+    }
+
+    @PutMapping("/{id}/members/{targetUserId}")
+    public void updateMemberRole(
+            @PathVariable UUID id,
+            @PathVariable UUID targetUserId,
+            @Valid @RequestBody UpdateMemberRoleRequest request) {
+        User user = getAuthenticatedUser();
+        workspaceService.updateMemberRole(user.getId(), id, targetUserId, request.getRole());
+    }
+
+    @PostMapping("/{id}/transfer-ownership")
+    public void transferOwnership(
+            @PathVariable UUID id,
+            @Valid @RequestBody TransferOwnershipRequest request) {
+        User user = getAuthenticatedUser();
+        workspaceService.transferOwnership(user.getId(), id, request.getNewOwnerId());
+    }
+
+    // --- INVITATIONS ---
 
     @PostMapping("/{id}/invite")
     public void inviteMember(
             @PathVariable UUID id,
             @Valid @RequestBody InviteMemberRequest request) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
-        }
+        User user = getAuthenticatedUser();
         workspaceService.inviteMember(user.getId(), id, request.getEmail(), request.getRole());
     }
 
     @PostMapping("/accept-invite")
-    public void acceptInvite(
-            @RequestParam String token) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
-        }
+    public void acceptInvite(@RequestParam String token) {
+        User user = getAuthenticatedUser();
         workspaceService.acceptInvitation(user.getId(), token);
     }
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/TransferOwnershipRequest.java
+
+```
+package com.fractal.backend.dto;
+
+import java.util.UUID;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class TransferOwnershipRequest {
+    @NotNull
+    private UUID newOwnerId;
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/UpdateMemberRoleRequest.java
+
+```
+package com.fractal.backend.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
+
+@Data
+public class UpdateMemberRoleRequest {
+    @NotBlank
+    private String role; // ADMIN, MEMBER, VIEWER
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/WorkspaceMemberDTO.java
+
+```
+package com.fractal.backend.dto;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class WorkspaceMemberDTO {
+    private UUID id;
+    private String email;
+    private String fullName;
+    private String avatarUrl;
+    private String role;
+    private OffsetDateTime joinedAt;
 }
 ```
 
@@ -1594,16 +1675,31 @@ public class WorkspaceMember {
 package com.fractal.backend.repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import com.fractal.backend.dto.WorkspaceMemberDTO;
 import com.fractal.backend.model.WorkspaceMember;
 
 @Repository
 public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember, WorkspaceMember.WorkspaceMemberId> {
     List<WorkspaceMember> findAllByUserId(UUID userId);
+
+    // Fetch members with User details using a DTO projection
+    @Query("SELECT new com.fractal.backend.dto.WorkspaceMemberDTO(u.id, u.email, u.fullName, u.avatarUrl, wm.role, wm.joinedAt) "
+            +
+            "FROM WorkspaceMember wm " +
+            "JOIN User u ON wm.userId = u.id " +
+            "WHERE wm.workspaceId = :workspaceId " +
+            "ORDER BY wm.joinedAt ASC")
+    List<WorkspaceMemberDTO> findMembersByWorkspaceId(@Param("workspaceId") UUID workspaceId);
+
+    Optional<WorkspaceMember> findByWorkspaceIdAndUserId(UUID workspaceId, UUID userId);
 }
 ```
 
@@ -1647,6 +1743,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.fractal.backend.dto.WorkspaceMemberDTO;
 import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.model.Workspace;
@@ -1699,6 +1796,27 @@ public class WorkspaceService {
         return savedWorkspace;
     }
 
+    public List<WorkspaceResponse> getWorkspacesForUser(UUID userId) {
+        List<Workspace> workspaces = workspaceRepository.findAllActiveWorkspacesByUserId(userId);
+
+        return workspaces.stream().map(w -> {
+            WorkspaceMember member = workspaceMemberRepository
+                    .findByWorkspaceIdAndUserId(w.getId(), userId).orElse(null);
+            return WorkspaceResponse.builder()
+                    .id(w.getId())
+                    .name(w.getName())
+                    .slug(w.getSlug())
+                    .role(member != null ? member.getRole() : "UNKNOWN")
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    public List<WorkspaceMemberDTO> getWorkspaceMembers(UUID requesterId, UUID workspaceId) {
+        // All members (OWNER, ADMIN, MEMBER) can view workspace members
+        validateRole(workspaceId, requesterId, List.of("OWNER", "ADMIN", "MEMBER"));
+        return workspaceMemberRepository.findMembersByWorkspaceId(workspaceId);
+    }
+
     @Transactional
     public Workspace updateWorkspace(UUID userId, UUID workspaceId, String newName, String newSlug) {
         validateRole(workspaceId, userId, List.of("OWNER", "ADMIN"));
@@ -1717,6 +1835,61 @@ public class WorkspaceService {
     }
 
     @Transactional
+    public void updateMemberRole(UUID requesterId, UUID workspaceId, UUID targetUserId, String newRole) {
+        // Only OWNER can update member roles
+        validateRole(workspaceId, requesterId, List.of("OWNER"));
+
+        // Validate new role is valid (must be ADMIN or MEMBER, not OWNER)
+        validateRoleValue(newRole);
+
+        if ("OWNER".equals(newRole)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Ownership transfer must be done via specific endpoint");
+        }
+
+        WorkspaceMember targetMember = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Member not found"));
+
+        if ("OWNER".equals(targetMember.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot change role of the Workspace Owner");
+        }
+
+        targetMember.setRole(newRole.toUpperCase());
+        workspaceMemberRepository.save(targetMember);
+    }
+
+    // --- MEMBER MANAGEMENT (REMOVE MEMBER) ---
+    @Transactional
+    public void removeMember(UUID requesterId, UUID workspaceId, UUID targetUserId) {
+        WorkspaceMember requester = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, requesterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a member"));
+
+        WorkspaceMember target = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Member not found"));
+
+        // Logic:
+        // 1. User can leave (requester == target), unless they are OWNER
+        // 2. Only OWNER can remove other members
+
+        if (requesterId.equals(targetUserId)) {
+            // Leaving - any member can leave except OWNER
+            if ("OWNER".equals(target.getRole())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Owner cannot leave workspace. Delete workspace or transfer ownership.");
+            }
+        } else {
+            // Removing another member - only OWNER can do this
+            if (!"OWNER".equals(requester.getRole())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Only workspace owners can remove members");
+            }
+        }
+
+        workspaceMemberRepository.delete(target);
+    }
+
+    // --- DELETE WORKSPACE ---
+    @Transactional
     public void deleteWorkspace(UUID userId, UUID workspaceId) {
         validateRole(workspaceId, userId, List.of("OWNER"));
         Workspace workspace = getWorkspaceOrThrow(workspaceId);
@@ -1724,27 +1897,39 @@ public class WorkspaceService {
         workspaceRepository.save(workspace);
     }
 
+    // --- INVITATIONS ---
     @Transactional
     public void inviteMember(UUID requesterId, UUID workspaceId, String email, String role) {
+        // OWNER and ADMIN can invite members
         validateRole(workspaceId, requesterId, List.of("OWNER", "ADMIN"));
+
+        // Validate role value
+        validateRoleValue(role);
+
+        // Only OWNER can invite ADMIN
+        WorkspaceMember requester = workspaceMemberRepository
+                .findByWorkspaceIdAndUserId(workspaceId, requesterId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a member"));
+
+        if ("ADMIN".equals(role) && !"OWNER".equals(requester.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only workspace owners can invite admins");
+        }
+
         Workspace workspace = getWorkspaceOrThrow(workspaceId);
 
-        // 1. Check if user is already a member
         Optional<User> existingUser = userRepository.findByEmail(email);
         if (existingUser.isPresent()) {
-            boolean isMember = workspaceMemberRepository.findById(
-                    new WorkspaceMember.WorkspaceMemberId(workspaceId, existingUser.get().getId())).isPresent();
+            boolean isMember = workspaceMemberRepository
+                    .findByWorkspaceIdAndUserId(workspaceId, existingUser.get().getId()).isPresent();
             if (isMember) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is already a member");
             }
         }
 
-        // If I have already invited this specific person (email) to this specific
-        // workspace (workspaceId), delete that old invitation before creating a new one
         workspaceInvitationRepository.deleteByWorkspaceIdAndEmail(workspaceId, email);
 
         String token = UUID.randomUUID().toString();
-
         WorkspaceInvitation invitation = WorkspaceInvitation.builder()
                 .workspaceId(workspaceId)
                 .email(email)
@@ -1755,21 +1940,24 @@ public class WorkspaceService {
                 .build();
 
         workspaceInvitationRepository.save(invitation);
-
         emailService.sendWorkspaceInvite(email, workspace.getName(), token);
     }
 
-    // --- ACCEPT INVITE ---
     @Transactional
     public WorkspaceMember acceptInvitation(UUID userId, String token) {
         WorkspaceInvitation invitation = workspaceInvitationRepository.findByToken(token)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid invitation"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid or expired invitation"));
 
         if (invitation.getExpiresAt().isBefore(OffsetDateTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invitation expired");
         }
 
-        // Add Member
+        // Check if already member
+        if (workspaceMemberRepository.findByWorkspaceIdAndUserId(invitation.getWorkspaceId(), userId).isPresent()) {
+            workspaceInvitationRepository.delete(invitation);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You are already a member of this workspace");
+        }
+
         WorkspaceMember member = WorkspaceMember.builder()
                 .workspaceId(invitation.getWorkspaceId())
                 .userId(userId)
@@ -1792,10 +1980,29 @@ public class WorkspaceService {
 
     private void validateRole(UUID workspaceId, UUID userId, List<String> allowedRoles) {
         WorkspaceMember member = workspaceMemberRepository
-                .findById(new WorkspaceMember.WorkspaceMemberId(workspaceId, userId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a member"));
+                .findByWorkspaceIdAndUserId(workspaceId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Access denied: Not a member of this workspace"));
+
         if (!allowedRoles.contains(member.getRole()))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Insufficient permissions");
+    }
+
+    /**
+     * Validates that the role value is one of the allowed roles: OWNER, ADMIN, or MEMBER
+     * @param role The role to validate
+     * @throws ResponseStatusException if role is invalid
+     */
+    private void validateRoleValue(String role) {
+        if (role == null || role.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Role cannot be null or empty");
+        }
+
+        List<String> validRoles = List.of("OWNER", "ADMIN", "MEMBER");
+        if (!validRoles.contains(role.toUpperCase())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Invalid role. Allowed roles are: OWNER, ADMIN, MEMBER");
+        }
     }
 
     private String toSlug(String input) {
@@ -1804,17 +2011,41 @@ public class WorkspaceService {
         return NONLATIN.matcher(normalized).replaceAll("").toLowerCase(Locale.ENGLISH);
     }
 
-    public List<WorkspaceResponse> getWorkspacesForUser(UUID userId) {
-        return workspaceMemberRepository.findAllByUserId(userId).stream()
-                .map(member -> {
-                    Workspace w = workspaceRepository.findById(member.getWorkspaceId()).orElse(null);
-                    if (w == null || w.getDeletedAt() != null)
-                        return null;
-                    return WorkspaceResponse.builder()
-                            .id(w.getId()).name(w.getName()).slug(w.getSlug()).role(member.getRole()).build();
-                })
-                .filter(res -> res != null)
-                .collect(Collectors.toList());
+    @Transactional
+    public void transferOwnership(UUID currentOwnerId, UUID workspaceId, UUID newOwnerId) {
+        // 1. Validate the Workspace
+        Workspace workspace = getWorkspaceOrThrow(workspaceId);
+
+        // 2. Validate Current Owner (Must be the actual owner)
+        if (!workspace.getOwnerId().equals(currentOwnerId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the current owner can transfer ownership");
+        }
+
+        // 3. Validate New Owner (Must be a member of the workspace)
+        WorkspaceMember newOwnerMember = workspaceMemberRepository
+                .findByWorkspaceIdAndUserId(workspaceId, newOwnerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "New owner must be a member of the workspace"));
+
+        // 4. Get Current Owner Member Record
+        WorkspaceMember currentOwnerMember = workspaceMemberRepository
+                .findByWorkspaceIdAndUserId(workspaceId, currentOwnerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Current owner member record not found"));
+
+        // 5. Swap Roles
+        // Demote current owner to ADMIN (safest default)
+        currentOwnerMember.setRole("ADMIN");
+        // Promote new owner to OWNER
+        newOwnerMember.setRole("OWNER");
+
+        // 6. Update Workspace Table
+        workspace.setOwnerId(newOwnerId);
+
+        // 7. Save Changes
+        workspaceMemberRepository.save(currentOwnerMember);
+        workspaceMemberRepository.save(newOwnerMember);
+        workspaceRepository.save(workspace);
     }
 }
 ```
@@ -2300,78 +2531,133 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 - in backend/src/main/java/com/fractal/backend/service/JwtService.java
 
 ```
-package com.fractal.backend.service;
+package com.fractal.service;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.io.Decoders;
-import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
+import java.util.Optional;
+import java.util.UUID;
 
-import java.security.Key;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.Function;
+import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-@Service
-public class JwtService {
+import com.fractal.backend.model.User;
+import com.fractal.backend.model.Workspace;
+import com.fractal.backend.model.WorkspaceMember;
+import com.fractal.backend.repository.WorkspaceMemberRepository;
+import com.fractal.backend.repository.WorkspaceRepository;
+import com.fractal.backend.service.WorkspaceService;
 
-    @Value("${JWT_SECRET}")
-    private String secretKey;
+@ExtendWith(MockitoExtension.class)
+class WorkspaceServiceTest {
 
-    @Value("${JWT_EXPIRATION}")
-    private long jwtExpiration;
+    @Mock
+    private WorkspaceRepository workspaceRepository;
 
-    public String extractUsername(String token) {
-        return extractClaim(token, Claims::getSubject);
+    @Mock
+    private WorkspaceMemberRepository workspaceMemberRepository;
+
+    @InjectMocks
+    private WorkspaceService workspaceService;
+
+    @Test
+    void createWorkspace_ShouldSaveWorkspaceAndAddOwner() {
+        // Arrange
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setEmail("test@fractal.com");
+
+        String workspaceName = "Fractal Inc";
+
+        // Mock checking for slug uniqueness (return false means slug is not taken)
+        when(workspaceRepository.existsBySlug(anyString())).thenReturn(false);
+
+        // Mock saving workspace (return what passed in)
+        when(workspaceRepository.save(any(Workspace.class))).thenAnswer(i -> {
+            Workspace w = i.getArgument(0);
+            w.setId(UUID.randomUUID()); // Simulate DB ID generation
+            return w;
+        });
+
+        // Act
+        Workspace createdWorkspace = workspaceService.createWorkspace(user.getId(), workspaceName);
+
+        // Assert
+        assertThat(createdWorkspace).isNotNull();
+        assertThat(createdWorkspace.getName()).isEqualTo(workspaceName);
+        assertThat(createdWorkspace.getOwnerId()).isEqualTo(user.getId());
+        assertThat(createdWorkspace.getSlug()).startsWith("fractal-inc");
+
+        // Verify that the user was added as a member with OWNER role
+        ArgumentCaptor<WorkspaceMember> memberCaptor = ArgumentCaptor.forClass(WorkspaceMember.class);
+        verify(workspaceMemberRepository).save(memberCaptor.capture());
+
+        WorkspaceMember member = memberCaptor.getValue();
+        assertThat(member.getUserId()).isEqualTo(user.getId());
+        assertThat(member.getRole()).isEqualTo("OWNER");
     }
 
-    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = extractAllClaims(token);
-        return claimsResolver.apply(claims);
+    @Test
+    void removeMember_OwnerRemovesMember_ShouldSucceed() {
+        // Arrange
+        UUID ownerId = UUID.randomUUID();
+        UUID memberId = UUID.randomUUID();
+        UUID workspaceId = UUID.randomUUID();
+
+        // Mock Requester (Owner)
+        WorkspaceMember ownerMember = WorkspaceMember.builder()
+                .userId(ownerId).workspaceId(workspaceId).role("OWNER").build();
+        when(workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, ownerId))
+                .thenReturn(Optional.of(ownerMember));
+
+        // Mock Target (Member)
+        WorkspaceMember targetMember = WorkspaceMember.builder()
+                .userId(memberId).workspaceId(workspaceId).role("MEMBER").build();
+        when(workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, memberId))
+                .thenReturn(Optional.of(targetMember));
+
+        // Act
+        workspaceService.removeMember(ownerId, workspaceId, memberId);
+
+        // Assert
+        verify(workspaceMemberRepository).delete(targetMember);
     }
 
-    public String generateToken(String email) {
-        return generateToken(new HashMap<>(), email);
-    }
+    @Test
+    void removeMember_AdminRemovesOwner_ShouldThrowForbidden() {
+        // Arrange
+        UUID adminId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID workspaceId = UUID.randomUUID();
 
-    public String generateToken(Map<String, Object> extraClaims, String email) {
-        return Jwts.builder()
-                .setClaims(extraClaims)
-                .setSubject(email)
-                .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
-                .signWith(getSignInKey(), SignatureAlgorithm.HS256)
-                .compact();
-    }
+        // Mock Requester (Admin)
+        WorkspaceMember adminMember = WorkspaceMember.builder()
+                .userId(adminId).workspaceId(workspaceId).role("ADMIN").build();
+        when(workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, adminId))
+                .thenReturn(Optional.of(adminMember));
 
-    public boolean isTokenValid(String token, String email) {
-        final String username = extractUsername(token);
-        return (username.equals(email)) && !isTokenExpired(token);
-    }
+        // Mock Target (Owner)
+        WorkspaceMember ownerMember = WorkspaceMember.builder()
+                .userId(ownerId).workspaceId(workspaceId).role("OWNER").build();
+        when(workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, ownerId))
+                .thenReturn(Optional.of(ownerMember));
 
-    private boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
-    }
+        // Act & Assert
+        try {
+            workspaceService.removeMember(adminId, workspaceId, ownerId);
+        } catch (org.springframework.web.server.ResponseStatusException ex) {
+            assertThat(ex.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.FORBIDDEN);
+        }
 
-    private Date extractExpiration(String token) {
-        return extractClaim(token, Claims::getExpiration);
-    }
-
-    private Claims extractAllClaims(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getSignInKey())
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
-    }
-
-    private Key getSignInKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
-        return Keys.hmacShaKeyFor(keyBytes);
+        verify(workspaceMemberRepository, never()).delete(any());
     }
 }
 ```
@@ -2426,911 +2712,13 @@ public class UpdateWorkspaceRequest {
 }
 ```
 
-- in
-
-
-
-
-google login is working.
-
-this is the current file structure is frontend
-.
-├── app
-│   ├── (site)
-│   │   ├── auth
-│   │   │   └── callback
-│   │   │       ├── loading.tsx
-│   │   │       └── page.tsx
-│   │   ├── login
-│   │   │   └── page.tsx
-│   │   ├── page.tsx
-│   │   ├── select-workspace
-│   │   │   └── page.tsx
-│   │   └── welcome
-│   │       └── new-workspace
-│   │           └── page.tsx
-│   ├── [domain]
-│   │   ├── dashboard
-│   │   │   └── page.tsx
-│   │   └── page.tsx
-│   ├── globals.css
-│   └── layout.tsx
-├── bun.lock
-├── components
-│   ├── auth
-│   │   └── login-form.tsx
-│   ├── dashboard
-│   │   ├── dashboard-content.tsx
-│   │   └── dashboard-layout.tsx
-│   ├── theme-provider.tsx
-│   ├── ui
-│   │   ├── accordion.tsx
-│   │   ├── alert-dialog.tsx
-│   │   ├── alert.tsx
-│   │   ├── aspect-ratio.tsx
-│   │   ├── avatar.tsx
-│   │   ├── badge.tsx
-│   │   ├── breadcrumb.tsx
-│   │   ├── button-group.tsx
-│   │   ├── button.tsx
-│   │   ├── calendar.tsx
-│   │   ├── card.tsx
-│   │   ├── carousel.tsx
-│   │   ├── chart.tsx
-│   │   ├── checkbox.tsx
-│   │   ├── collapsible.tsx
-│   │   ├── command.tsx
-│   │   ├── context-menu.tsx
-│   │   ├── dialog.tsx
-│   │   ├── drawer.tsx
-│   │   ├── dropdown-menu.tsx
-│   │   ├── empty.tsx
-│   │   ├── field.tsx
-│   │   ├── form.tsx
-│   │   ├── hover-card.tsx
-│   │   ├── input-group.tsx
-│   │   ├── input-otp.tsx
-│   │   ├── input.tsx
-│   │   ├── item.tsx
-│   │   ├── kbd.tsx
-│   │   ├── label.tsx
-│   │   ├── menubar.tsx
-│   │   ├── navigation-menu.tsx
-│   │   ├── pagination.tsx
-│   │   ├── popover.tsx
-│   │   ├── progress.tsx
-│   │   ├── radio-group.tsx
-│   │   ├── resizable.tsx
-│   │   ├── scroll-area.tsx
-│   │   ├── select.tsx
-│   │   ├── separator.tsx
-│   │   ├── sheet.tsx
-│   │   ├── sidebar.tsx
-│   │   ├── skeleton.tsx
-│   │   ├── slider.tsx
-│   │   ├── sonner.tsx
-│   │   ├── spinner.tsx
-│   │   ├── switch.tsx
-│   │   ├── table.tsx
-│   │   ├── tabs.tsx
-│   │   ├── textarea.tsx
-│   │   ├── toast.tsx
-│   │   ├── toaster.tsx
-│   │   ├── toggle-group.tsx
-│   │   ├── toggle.tsx
-│   │   ├── tooltip.tsx
-│   │   ├── use-mobile.tsx
-│   │   └── use-toast.ts
-│   └── workspace
-│       └── workspace-selector.tsx
-├── components.json
-├── hooks
-│   ├── use-mobile.ts
-│   └── use-toast.ts
-├── lib
-│   ├── api.ts
-│   ├── auth-context.tsx
-│   ├── types.ts
-│   └── utils.ts
-├── next-env.d.ts
-├── next.config.mjs
-├── package.json
-├── pnpm-lock.yaml
-├── postcss.config.mjs
-├── proxy.ts
-├── public
-│   ├── apple-icon.png
-│   ├── icon-dark-32x32.png
-│   ├── icon-light-32x32.png
-│   ├── icon.svg
-│   ├── placeholder-logo.png
-│   ├── placeholder-logo.svg
-│   ├── placeholder-user.jpg
-│   ├── placeholder.jpg
-│   └── placeholder.svg
-├── styles
-│   └── globals.css
-└── tsconfig.json
-
-
-- in frontend/app/(site)/auth/callback/page.tsx
-````
-
-"use client";
-
-import { useEffect, useRef, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { apiClient } from "@/lib/api";
-import { Loader2 } from "lucide-react";
-import { useAuth } from "@/lib/auth-context";
-
-function AuthCallbackContent() {
-const router = useRouter();
-const searchParams = useSearchParams();
-const processedRef = useRef(false);
-const { refreshWorkspaces } = useAuth();
-
-useEffect(() => {
-const processLogin = async () => {
-// Prevent double execution in React Strict Mode
-if (processedRef.current) return;
-processedRef.current = true;
-
-      // 1. Check for the token we sent from the backend
-      const token = searchParams.get("token");
-
-      if (!token) {
-        // If we still have the old "error" param or no token
-        const error = searchParams.get("error");
-        console.error("Auth Error:", error || "No token found");
-        router.push("/login?error=" + (error || "no_token"));
-        return;
-      }
-
-      try {
-        // 2. Set the token in our API client (saves to localStorage)
-        apiClient.setAccessToken(token);
-
-        // 3. Force a reload of the user state or just redirect
-        // We will fetch the user data to decide routing
-        // (Note: This call will fail until we do Step 2 below, but that's okay for now)
-        try {
-          const workspaces = await refreshWorkspaces();
-          if (workspaces.length === 0) {
-            router.replace("/welcome/new-workspace");
-          } else {
-            router.replace("/select-workspace");
-          }
-        } catch (e) {
-          // If fetching fails, we default to dashboard or new-workspace
-          // This allows us to proceed even if the /me endpoint isn't ready
-          console.warn("Could not fetch workspaces, redirecting to default", e);
-          router.replace("/select-workspace");
-        }
-      } catch (error) {
-        console.error("Failed to process login", error);
-        router.push("/login?error=auth_failed");
-      }
-    };
-
-    processLogin();
-
-}, [router, searchParams]);
-
-return (
-
-<div className="flex h-screen w-full items-center justify-center bg-background">
-<div className="flex flex-col items-center gap-4">
-<Loader2 className="h-8 w-8 animate-spin text-primary" />
-<p className="text-muted-foreground">Authenticating...</p>
-</div>
-</div>
-);
-}
-
-export default function AuthCallbackPage() {
-return (
-<Suspense fallback={<div>Loading...</div>}>
-<AuthCallbackContent />
-</Suspense>
-);
-}
-
-```
-
-- in frontend/app/welcome/new-workspace/page.tsx
-```
-
-"use client"
-
-import React from "react"
-
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/auth-context"
-import { apiClient } from "@/lib/api"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-Card,
-CardContent,
-CardDescription,
-CardHeader,
-CardTitle,
-} from "@/components/ui/card"
-import { toast } from "sonner"
-import { ArrowRight, Building2, Loader2, Sparkles } from "lucide-react"
-
-export default function NewWorkspacePage() {
-const router = useRouter()
-const { user, refreshWorkspaces, setCurrentWorkspace } = useAuth()
-const [workspaceName, setWorkspaceName] = useState("")
-const [isCreating, setIsCreating] = useState(false)
-
-const generateSlug = (name: string) => {
-return name
-.toLowerCase()
-.replace(/[^a-z0-9]+/g, "-")
-.replace(/^-|-$/g, "")
-}
-
-const handleCreateWorkspace = async (e: React.FormEvent) => {
-e.preventDefault()
-
-    if (!workspaceName.trim()) {
-      toast.error("Please enter a workspace name")
-      return
-    }
-
-    setIsCreating(true)
-
-    try {
-      const response = await apiClient.createWorkspace({ name: workspaceName })
-      await refreshWorkspaces()
-      setCurrentWorkspace(response.workspace)
-      toast.success("Workspace created successfully!")
-      router.push(response.redirectUrl || "/dashboard")
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create workspace"
-      )
-    } finally {
-      setIsCreating(false)
-    }
-
-}
-
-const slug = generateSlug(workspaceName)
-
-return (
-
-<div className="min-h-screen flex flex-col bg-muted/30">
-{/_ Header _/}
-<header className="border-b bg-background/80 backdrop-blur-sm">
-<div className="container mx-auto px-4 h-16 flex items-center justify-between">
-<div className="flex items-center gap-2">
-<div className="h-8 w-8 rounded-lg bg-foreground flex items-center justify-center">
-<span className="text-background font-bold">T</span>
-</div>
-<span className="font-semibold">TaskFlow</span>
-</div>
-{user && (
-<div className="flex items-center gap-2 text-sm text-muted-foreground">
-<span>{user.email}</span>
-</div>
-)}
-</div>
-</header>
-
-      {/* Main content */}
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-lg space-y-8">
-          {/* Welcome message */}
-          <div className="text-center space-y-2">
-            <div className="flex items-center justify-center mb-4">
-              <div className="h-16 w-16 rounded-2xl bg-foreground/5 flex items-center justify-center">
-                <Sparkles className="h-8 w-8 text-foreground" />
-              </div>
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              Create your first workspace
-            </h1>
-            <p className="text-muted-foreground max-w-md mx-auto">
-              Workspaces are shared environments where you and your team can
-              collaborate on tasks and projects.
-            </p>
-          </div>
-
-          {/* Workspace form */}
-          <Card className="border-0 shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                Workspace details
-              </CardTitle>
-              <CardDescription>
-                Choose a name for your workspace. You can always change this
-                later.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreateWorkspace} className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="workspace-name">Workspace name</Label>
-                  <Input
-                    id="workspace-name"
-                    placeholder="Acme Inc."
-                    value={workspaceName}
-                    onChange={(e) => setWorkspaceName(e.target.value)}
-                    className="h-12 text-base"
-                    autoFocus
-                  />
-                </div>
-
-                {slug && (
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground">
-                      Workspace URL
-                    </Label>
-                    <div className="flex items-center gap-0 rounded-md border bg-muted/50 px-3 py-2">
-                      <span className="text-sm text-muted-foreground">
-                        taskflow.app/
-                      </span>
-                      <span className="text-sm font-medium">{slug}</span>
-                    </div>
-                  </div>
-                )}
-
-                <Button
-                  type="submit"
-                  className="w-full h-12 text-base"
-                  disabled={!workspaceName.trim() || isCreating}
-                >
-                  {isCreating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Creating workspace...
-                    </>
-                  ) : (
-                    <>
-                      Create workspace
-                      <ArrowRight className="h-4 w-4 ml-2" />
-                    </>
-                  )}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          {/* Tips */}
-          <div className="bg-background border rounded-lg p-4 space-y-3">
-            <h3 className="font-medium text-sm">Tips for workspace names</h3>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li className="flex items-start gap-2">
-                <span className="text-foreground">1.</span>
-                Use your company or team name for easy recognition
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-foreground">2.</span>
-                Keep it short and memorable for quick access
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-foreground">3.</span>
-                You can create multiple workspaces for different projects
-              </li>
-            </ul>
-          </div>
-        </div>
-      </main>
-    </div>
-
-)
-}
-
-```
-
-- in frontend/lib/auth-context.tsx
-```
-
-"use client";
-
-import {
-createContext,
-useContext,
-useEffect,
-useState,
-useCallback,
-type ReactNode,
-} from "react";
-import { apiClient } from "./api";
-import type { User, Workspace, AuthState } from "./types";
-import { useRouter } from "next/navigation";
-
-interface AuthContextType extends AuthState {
-login: () => void;
-logout: () => Promise<void>;
-setCurrentWorkspace: (workspace: Workspace) => void;
-refreshWorkspaces: () => Promise<Workspace[]>;
-handleAuthCallback: (code: string) => Promise<{ redirectUrl: string }>;
-}
-
-const AuthContext = createContext<AuthContextType | null>(null);
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-const router = useRouter();
-const [state, setState] = useState<AuthState>({
-user: null,
-workspaces: [],
-currentWorkspace: null,
-isLoading: true,
-isAuthenticated: false,
-});
-
-const refreshUser = useCallback(async () => {
-try {
-const [user, workspaces] = await Promise.all([
-apiClient.getCurrentUser(),
-apiClient.getUserWorkspaces(),
-]);
-setState((prev) => ({
-...prev,
-user,
-workspaces,
-isAuthenticated: true,
-isLoading: false,
-}));
-} catch {
-setState((prev) => ({
-...prev,
-user: null,
-workspaces: [],
-isAuthenticated: false,
-isLoading: false,
-}));
-}
-}, []);
-
-useEffect(() => {
-if (apiClient.isAuthenticated()) {
-refreshUser();
-} else {
-setState((prev) => ({ ...prev, isLoading: false }));
-}
-}, [refreshUser]);
-
-const login = useCallback(() => {
-window.location.href = apiClient.getGoogleAuthUrl();
-}, []);
-
-const logout = useCallback(async () => {
-await apiClient.logout();
-setState({
-user: null,
-workspaces: [],
-currentWorkspace: null,
-isLoading: false,
-isAuthenticated: false,
-});
-router.replace("/");
-}, []);
-
-const setCurrentWorkspace = useCallback((workspace: Workspace) => {
-setState((prev) => ({ ...prev, currentWorkspace: workspace }));
-if (typeof window !== "undefined") {
-localStorage.setItem("currentWorkspaceId", workspace.id);
-}
-}, []);
-
-const refreshWorkspaces = useCallback(async () => {
-const workspaces = await apiClient.getUserWorkspaces();
-setState((prev) => ({ ...prev, workspaces }));
-return workspaces;
-}, []);
-
-const handleAuthCallback = useCallback(async (code: string) => {
-const response = await apiClient.handleOAuthCallback(code);
-setState((prev) => ({
-...prev,
-user: response.user,
-workspaces: response.workspaces,
-isAuthenticated: true,
-isLoading: false,
-}));
-return { redirectUrl: response.redirectUrl };
-}, []);
-
-return (
-<AuthContext.Provider
-value={{
-        ...state,
-        login,
-        logout,
-        setCurrentWorkspace,
-        refreshWorkspaces,
-        handleAuthCallback,
-      }} >
-{children}
-</AuthContext.Provider>
-);
-}
-
-export function useAuth() {
-const context = useContext(AuthContext);
-if (!context) {
-throw new Error("useAuth must be used within an AuthProvider");
-}
-return context;
-}
-
-```
-
-- in frontend/app/(site)/select-workspace/page.tsx
-```
-
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
-import { Button } from "@/components/ui/button";
-import {
-Card,
-CardContent,
-CardDescription,
-CardHeader,
-CardTitle,
-} from "@/components/ui/card";
-import { Building2, ChevronRight, Plus } from "lucide-react";
-import type { Workspace } from "@/lib/types";
-
-export default function SelectWorkspacePage() {
-const router = useRouter();
-const { user, workspaces, logout } = useAuth();
-
-const handleSelectWorkspace = (workspace: Workspace) => {
-const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-const protocol = window.location.protocol;
-const targetUrl = `${protocol}//${workspace.slug}.${rootDomain}/dashboard`;
-window.location.href = targetUrl;
-};
-
-const handleCreateNew = () => {
-router.push("/welcome/new-workspace");
-};
-
-const handleLogout = async () => {
-await logout();
-router.push("/login");
-};
-
-return (
-
-<div className="min-h-screen flex flex-col bg-muted/30">
-{/_ Header _/}
-<header className="border-b bg-background/80 backdrop-blur-sm">
-<div className="container mx-auto px-4 h-16 flex items-center justify-between">
-<div className="flex items-center gap-2">
-<div className="h-8 w-8 rounded-lg bg-foreground flex items-center justify-center">
-<span className="text-background font-bold">T</span>
-</div>
-<span className="font-semibold">TaskFlow</span>
-</div>
-<div className="flex items-center gap-4">
-{user && (
-<span className="text-sm text-muted-foreground">
-{user.email}
-</span>
-)}
-<Button variant="ghost" size="sm" onClick={handleLogout}>
-Sign out
-</Button>
-</div>
-</div>
-</header>
-
-      {/* Main content */}
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-lg space-y-6">
-          {/* Header */}
-          <div className="text-center space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight">
-              Choose a workspace
-            </h1>
-            <p className="text-muted-foreground">
-              Select a workspace to continue or create a new one
-            </p>
-          </div>
-
-          {/* Workspace list */}
-          <Card className="border-0 shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Your workspaces</CardTitle>
-              <CardDescription>
-                You have access to {workspaces.length} workspace
-                {workspaces.length !== 1 ? "s" : ""}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {workspaces.map((workspace) => (
-                <button
-                  key={workspace.id}
-                  onClick={() => handleSelectWorkspace(workspace)}
-                  className="w-full flex items-center justify-between p-3 rounded-lg border bg-background hover:bg-accent transition-colors text-left group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-foreground/5 flex items-center justify-center">
-                      <Building2 className="h-5 w-5 text-foreground" />
-                    </div>
-                    <div>
-                      <div className="font-medium">{workspace.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {workspace.slug}.{window.location.host}
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
-                </button>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Create new workspace */}
-          <Button
-            variant="outline"
-            className="w-full h-12 gap-2 bg-transparent"
-            onClick={handleCreateNew}
-          >
-            <Plus className="h-4 w-4" />
-            Create new workspace
-          </Button>
-        </div>
-      </main>
-    </div>
-
-);
-}
-
-```
-
-- in frontend/app/[domain]/dashboard/page.tsx
-```
-
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
-import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
-import { DashboardContent } from "@/components/dashboard/dashboard-content";
-import { getSubdomain } from "@/lib/utils"; // Make sure you import this
-
-export default function DashboardPage() {
-const router = useRouter();
-const {
-isAuthenticated,
-isLoading,
-workspaces,
-currentWorkspace,
-setCurrentWorkspace,
-} = useAuth();
-const [isWorkspaceResolved, setIsWorkspaceResolved] = useState(false);
-
-useEffect(() => {
-if (isLoading) return;
-
-    if (!isAuthenticated) {
-      const rootDomain =
-        process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
-      const protocol = window.location.protocol;
-      window.location.href = `${protocol}//${rootDomain}/login`;
-      return;
-    }
-
-    // --- NEW LOGIC START ---
-
-    // 1. Get the subdomain from the current hostname
-    // We can rely on window.location.hostname in the client
-    const hostname = window.location.hostname;
-    console.log("hostname", hostname);
-    const subdomain = getSubdomain(hostname);
-    console.log("subdomain", subdomain);
-    if (subdomain) {
-      console.log(subdomain);
-      // 2. Find the workspace that matches this subdomain
-      const matchingWorkspace = workspaces.find((w) => w.slug === subdomain);
-
-      if (matchingWorkspace) {
-        // 3. Set it as active if it's not already
-        if (currentWorkspace?.id !== matchingWorkspace.id) {
-          setCurrentWorkspace(matchingWorkspace);
-        }
-        setIsWorkspaceResolved(true);
-      } else {
-        // 4. If user has no access to this specific subdomain workspace -> 404 or redirect
-        // For now, let's send them back to selection
-        console.warn(`User does not have access to workspace: ${subdomain}`);
-        return;
-        router.push("/select-workspace"); // This will get rewritten to the root domain by middleware if configured, or just go to root
-      }
-    } else {
-      // If we are somehow on the dashboard without a subdomain (should be impossible via middleware),
-      console.log("no subdomain found");
-      return;
-      // send to select-workspace
-
-      router.push("/select-workspace");
-    }
-    // --- NEW LOGIC END ---
-
-}, [
-isAuthenticated,
-isLoading,
-workspaces,
-currentWorkspace,
-setCurrentWorkspace,
-router,
-]);
-
-if (!isAuthenticated) {
-return (
-
-<div className="min-h-screen flex items-center justify-center bg-background">
-<div className="flex flex-col items-center gap-2">
-<div className="animate-pulse text-muted-foreground">
-Authenticating...
-</div>
-</div>
-</div>
-);
-}
-
-if (isLoading || !isWorkspaceResolved) {
-return (
-
-<div className="min-h-screen flex items-center justify-center bg-background">
-<div className="flex flex-col items-center gap-2">
-<div className="animate-pulse text-muted-foreground">
-Loading Workspace...
-</div>
-</div>
-</div>
-);
-}
-
-return (
-<DashboardLayout>
-<DashboardContent />
-</DashboardLayout>
-);
-}
-
-```
-
-- in frontend/lib/api.ts
-```
-
-import type {
-LoginResponse,
-CreateWorkspaceRequest,
-CreateWorkspaceResponse,
-User,
-Workspace,
-} from "./types";
-import Cookies from "js-cookie";
-import { getCookieDomain } from "./utils";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-
-class ApiClient {
-private accessToken: string | null = null;
-
-setAccessToken(token: string | null) {
-this.accessToken = token;
-if (token) {
-Cookies.set("accessToken", token, {
-expires: 7,
-domain: getCookieDomain(),
-sameSite: "Lax",
-});
-} else {
-this.logout();
-}
-}
-
-getAccessToken(): string | null {
-if (this.accessToken) return this.accessToken;
-const token = Cookies.get("accessToken");
-if (token) {
-this.accessToken = token;
-return token;
-}
-return null;
-}
-private async fetch<T>(
-endpoint: string,
-options: RequestInit = {},
-): Promise<T> {
-const token = this.getAccessToken();
-const headers: HeadersInit = {
-"Content-Type": "application/json",
-...options.headers,
-};
-
-    if (token) {
-      (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers,
-      credentials: "omit",
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || `API Error: ${response.status}`);
-    }
-
-    return response.json();
-
-}
-
-// Auth endpoints
-getGoogleAuthUrl(): string {
-const redirectUri =
-typeof window !== "undefined"
-? `${window.location.origin}/auth/callback`
-: "";
-return `${API_BASE_URL}/oauth2/authorization/google?redirect_uri=${encodeURIComponent(redirectUri)}`;
-}
-
-async handleOAuthCallback(code: string): Promise<LoginResponse> {
-const response = await this.fetch<LoginResponse>(
-"/api/auth/oauth/callback",
-{
-method: "POST",
-body: JSON.stringify({ code }),
-},
-);
-this.setAccessToken(response.accessToken);
-return response;
-}
-
-async getCurrentUser(): Promise<User> {
-return this.fetch<User>("/api/auth/me");
-}
-
-async getUserWorkspaces(): Promise<Workspace[]> {
-return this.fetch<Workspace[]>("/api/workspaces");
-}
-
-async createWorkspace(
-data: CreateWorkspaceRequest,
-): Promise<CreateWorkspaceResponse> {
-return this.fetch<CreateWorkspaceResponse>("/api/workspaces", {
-method: "POST",
-body: JSON.stringify(data),
-});
-}
-
-logout() {
-this.accessToken = null;
-Cookies.remove("accessToken", { domain: getCookieDomain() });
-Cookies.remove("accessToken"); // Fallback cleanup
-}
-
-// Check if user is authenticated
-isAuthenticated(): boolean {
-return !!this.getAccessToken();
-}
-}
-
-export const apiClient = new ApiClient();
-
-```
-
 Till this point everything is done and implemented by me. i want your help after this point.
 
 Run spring boot using: ./mvnw spring-boot:run
 
-I want you to complete the backend for workspace.. basically all other operations like inviting people to workspace, CRUD operations like updating the name, deleting the workspace etc. accoring to the original plan. Please go step by step for the backend. I some apis that are missing are listing down members of a workspace, changing their roles.. also some apis need to be updated like listing workspaces of a user should also check what other workspaces he has already been invited to and accepted the invitations... do a complte code review and make sure I am following the industry level best practices.
+I want you to complete the backend for projects now.. I believe all the apis for workspace is done... basically all operations like inviting people to workspace, CRUD operations like updating the name, deleting the workspace etc. accoring to the original plan is done.. now i want to move to project level. - **Infinite Nesting:** Allow for infinite nesting of projects (sub-projects) and tasks (sub-tasks) using closure tables with `Ancestor`, `Descendant`, and `Depth` columns. this part.. so I need apis so that user can create delete update read projects in a workspace. he can infinitely create sub projects in a projects.. I will use closure tables for this. Also on the project level there will be 4 roles: "OWNER" (the one who creates, also has delete and transfer ownership permission) , "ADMIN" all permission, editor (can create and edit tasks in a project), and viewer (he can only view the tasks and subprojects in the project if he is member of a subproject), 
+
+I am also thinking..by default when a new sub project is created by an admin/owner, all the current admin and owners are members of it unless specified who to choose. Is this a good UX? what is the industry default? should i simply have 1 user set for all the projects and subprojects or different usersets for every subproject?? please research how this is currently done and what the best user experience is. 
+
+Once you have finalized the UX..Please go step by step for the backend. make sure I am following the industry level best practices. Make sure to write the test for every API you create.. dont miss any apis (must).
+
