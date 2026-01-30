@@ -135,12 +135,8 @@ class ApiClient {
   }
 
   async acceptInvite(token: string): Promise<void> {
-    return this.fetch<void>("/api/workspaces/accept-invite", {
+    return this.fetch<void>(`/api/workspaces/accept-invite?token=${encodeURIComponent(token)}`, {
       method: "POST",
-      body: JSON.stringify({}),
-      headers: {
-        "X-Invite-Token": token,
-      },
     });
   }
 
