@@ -415,9 +415,15 @@ Ran the test using `mvn test` command and it failed.
 ```
 package com.fractal.backend.controller;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.fractal.backend.model.User;
 
 @RestController
 @RequestMapping("/api")
@@ -430,6 +436,12 @@ public class HealthCheckController {
 
     @GetMapping("/protected")
     public String protectedEndpoint() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof User)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
+        }
+
         return "This is a protected resource.";
     }
 }
@@ -438,32 +450,46 @@ public class HealthCheckController {
 - in the backend/src/test/java/com/fractal/controller/HealthCheckControllerTest.java
 
 ```
-package com.fractal.controller;
+package com.fractal.backend.controller;
+
+import java.util.Collections;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fractal.backend.config.SecurityConfig;
-import com.fractal.backend.controller.HealthCheckController;
+import com.fractal.backend.model.User;
+import com.fractal.backend.repository.UserRepository;
 import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
+import com.fractal.backend.security.JwtAuthenticationFilter;
+import com.fractal.backend.service.JwtService;
 
 @WebMvcTest(HealthCheckController.class)
-@Import(SecurityConfig.class)
+@AutoConfigureMockMvc(addFilters = false)
 public class HealthCheckControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    // We mock this bean so SecurityConfig can load without needing the real
-    // AuthService
     @MockitoBean
     private CustomOAuth2AuthenticationSuccessHandler successHandler;
+
+    @MockitoBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     @Test
     void shouldAllowAccessToPublicHealthEndpoint() throws Exception {
@@ -474,7 +500,19 @@ public class HealthCheckControllerTest {
     @Test
     void shouldDenyAccessToProtectedEndpointWithoutAuth() throws Exception {
         mockMvc.perform(get("/api/protected"))
-                .andExpect(status().isFound()); // 302 Redirect to Login
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldDenyAccessToProtectedEndpointWithAuth() throws Exception {
+        UUID userId = UUID.randomUUID();
+        User user = new User();
+        user.setId(userId);
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+        mockMvc.perform(get("/api/protected"))
+                .andExpect(status().isOk());
     }
 }
 ```
@@ -524,6 +562,28 @@ CREATE TABLE user_identities (
     provider_id VARCHAR(255),
     PRIMARY KEY (user_id, provider)
 );
+```
+
+- in backend/src/main/resources/db/migration/V2\_\_add_workspace_features.sql
+
+```sql
+-- Add deleted_at column for Soft Deletes on Workspaces
+ALTER TABLE workspaces ADD COLUMN deleted_at TIMESTAMPTZ DEFAULT NULL;
+
+-- Create Invitations Table
+CREATE TABLE workspace_invitations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL,
+    role VARCHAR(20) DEFAULT 'MEMBER', -- 'ADMIN', 'MEMBER', 'VIEWER'
+    token VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    invited_by UUID REFERENCES users(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(workspace_id, email)
+);
+
+CREATE INDEX idx_workspace_invitations_token ON workspace_invitations(token);
 ```
 
 - in the `backend/src/test/java/com/fractal/repository/UserRepositoryTest.java`
@@ -1392,6 +1452,82 @@ public class Workspace {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
+
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/model/WorkspaceInvitation.java
+
+```
+package com.fractal.backend.model;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "workspace_invitations")
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class WorkspaceInvitation {
+    @Id
+    @GeneratedValue(strategy = GenerationType.AUTO)
+    private UUID id;
+
+    @Column(name = "workspace_id", nullable = false)
+    private UUID workspaceId;
+
+    @Column(nullable = false)
+    private String email;
+
+    @Builder.Default
+    private String role = "MEMBER";
+
+    @Column(nullable = false)
+    private String token;
+
+    @Column(name = "expires_at", nullable = false)
+    private OffsetDateTime expiresAt;
+
+    @Column(name = "invited_by")
+    private UUID invitedBy;
+
+    @Column(name = "created_at", updatable = false)
+    private OffsetDateTime createdAt;
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/repository/WorkspaceInvitationRepository.java
+
+```
+package com.fractal.backend.repository;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import com.fractal.backend.model.WorkspaceInvitation;
+
+@Repository
+public interface WorkspaceInvitationRepository extends JpaRepository<WorkspaceInvitation, UUID> {
+    Optional<WorkspaceInvitation> findByToken(String token);
+    void deleteByWorkspaceIdAndEmail(UUID workspaceId, String email);
 }
 ```
 
@@ -1498,18 +1634,26 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
 package com.fractal.backend.service;
 
 import java.text.Normalizer;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.fractal.backend.dto.WorkspaceResponse;
+import com.fractal.backend.model.User;
 import com.fractal.backend.model.Workspace;
+import com.fractal.backend.model.WorkspaceInvitation;
 import com.fractal.backend.model.WorkspaceMember;
+import com.fractal.backend.repository.UserRepository;
+import com.fractal.backend.repository.WorkspaceInvitationRepository;
 import com.fractal.backend.repository.WorkspaceMemberRepository;
 import com.fractal.backend.repository.WorkspaceRepository;
 
@@ -1521,16 +1665,16 @@ public class WorkspaceService {
 
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
+    private final WorkspaceInvitationRepository workspaceInvitationRepository;
+    private final UserRepository userRepository;
+    private final EmailService emailService; // Inject Email Service
 
     private static final Pattern NONLATIN = Pattern.compile("[^\\w-]");
     private static final Pattern WHITESPACE = Pattern.compile("[\\s]");
 
     @Transactional
     public Workspace createWorkspace(UUID userId, String name) {
-        // 1. Generate a slug (URL friendly version of name)
         String slug = toSlug(name);
-
-        // 2. Ensure slug uniqueness (simple append strategy)
         String originalSlug = slug;
         int count = 1;
         while (workspaceRepository.existsBySlug(slug)) {
@@ -1538,185 +1682,421 @@ public class WorkspaceService {
             count++;
         }
 
-        // 3. Create Workspace
         Workspace workspace = Workspace.builder()
                 .ownerId(userId)
                 .name(name)
                 .slug(slug)
                 .planType("FREE")
                 .build();
-
         Workspace savedWorkspace = workspaceRepository.save(workspace);
 
-        // 4. Add Creator as OWNER
         WorkspaceMember member = WorkspaceMember.builder()
                 .workspaceId(savedWorkspace.getId())
                 .userId(userId)
                 .role("OWNER")
                 .build();
-
         workspaceMemberRepository.save(member);
-
         return savedWorkspace;
     }
 
-    // Helper to convert "My Company Name" -> "my-company-name"
+    @Transactional
+    public Workspace updateWorkspace(UUID userId, UUID workspaceId, String newName, String newSlug) {
+        validateRole(workspaceId, userId, List.of("OWNER", "ADMIN"));
+        Workspace workspace = getWorkspaceOrThrow(workspaceId);
+
+        if (newName != null && !newName.isBlank()) {
+            workspace.setName(newName);
+        }
+        if (newSlug != null && !newSlug.isBlank() && !newSlug.equals(workspace.getSlug())) {
+            if (workspaceRepository.existsBySlug(newSlug)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Slug already exists");
+            }
+            workspace.setSlug(toSlug(newSlug));
+        }
+        return workspaceRepository.save(workspace);
+    }
+
+    @Transactional
+    public void deleteWorkspace(UUID userId, UUID workspaceId) {
+        validateRole(workspaceId, userId, List.of("OWNER"));
+        Workspace workspace = getWorkspaceOrThrow(workspaceId);
+        workspace.setDeletedAt(OffsetDateTime.now());
+        workspaceRepository.save(workspace);
+    }
+
+    @Transactional
+    public void inviteMember(UUID requesterId, UUID workspaceId, String email, String role) {
+        validateRole(workspaceId, requesterId, List.of("OWNER", "ADMIN"));
+        Workspace workspace = getWorkspaceOrThrow(workspaceId);
+
+        // 1. Check if user is already a member
+        Optional<User> existingUser = userRepository.findByEmail(email);
+        if (existingUser.isPresent()) {
+            boolean isMember = workspaceMemberRepository.findById(
+                    new WorkspaceMember.WorkspaceMemberId(workspaceId, existingUser.get().getId())).isPresent();
+            if (isMember) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is already a member");
+            }
+        }
+
+        // If I have already invited this specific person (email) to this specific
+        // workspace (workspaceId), delete that old invitation before creating a new one
+        workspaceInvitationRepository.deleteByWorkspaceIdAndEmail(workspaceId, email);
+
+        String token = UUID.randomUUID().toString();
+
+        WorkspaceInvitation invitation = WorkspaceInvitation.builder()
+                .workspaceId(workspaceId)
+                .email(email)
+                .role(role)
+                .token(token)
+                .invitedBy(requesterId)
+                .expiresAt(OffsetDateTime.now().plusDays(7))
+                .build();
+
+        workspaceInvitationRepository.save(invitation);
+
+        emailService.sendWorkspaceInvite(email, workspace.getName(), token);
+    }
+
+    // --- ACCEPT INVITE ---
+    @Transactional
+    public WorkspaceMember acceptInvitation(UUID userId, String token) {
+        WorkspaceInvitation invitation = workspaceInvitationRepository.findByToken(token)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid invitation"));
+
+        if (invitation.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invitation expired");
+        }
+
+        // Add Member
+        WorkspaceMember member = WorkspaceMember.builder()
+                .workspaceId(invitation.getWorkspaceId())
+                .userId(userId)
+                .role(invitation.getRole())
+                .build();
+
+        WorkspaceMember savedMember = workspaceMemberRepository.save(member);
+        workspaceInvitationRepository.delete(invitation);
+        return savedMember;
+    }
+
+    // --- HELPERS ---
+    public Workspace getWorkspaceOrThrow(UUID workspaceId) {
+        Workspace w = workspaceRepository.findById(workspaceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Workspace not found"));
+        if (w.getDeletedAt() != null)
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Workspace not found");
+        return w;
+    }
+
+    private void validateRole(UUID workspaceId, UUID userId, List<String> allowedRoles) {
+        WorkspaceMember member = workspaceMemberRepository
+                .findById(new WorkspaceMember.WorkspaceMemberId(workspaceId, userId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a member"));
+        if (!allowedRoles.contains(member.getRole()))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Insufficient permissions");
+    }
+
     private String toSlug(String input) {
         String nowhitespace = WHITESPACE.matcher(input).replaceAll("-");
         String normalized = Normalizer.normalize(nowhitespace, Normalizer.Form.NFD);
-        String slug = NONLATIN.matcher(normalized).replaceAll("");
-        return slug.toLowerCase(Locale.ENGLISH);
+        return NONLATIN.matcher(normalized).replaceAll("").toLowerCase(Locale.ENGLISH);
     }
 
     public List<WorkspaceResponse> getWorkspacesForUser(UUID userId) {
-        // 1. Find all memberships for this user
-        List<WorkspaceMember> memberships = workspaceMemberRepository.findAllByUserId(userId);
-
-        // 2. For each membership, fetch the Workspace details and map to DTO
-        return memberships.stream()
+        return workspaceMemberRepository.findAllByUserId(userId).stream()
                 .map(member -> {
                     Workspace w = workspaceRepository.findById(member.getWorkspaceId()).orElse(null);
-                    if (w == null)
+                    if (w == null || w.getDeletedAt() != null)
                         return null;
-
                     return WorkspaceResponse.builder()
-                            .id(w.getId())
-                            .name(w.getName())
-                            .slug(w.getSlug())
-                            .role(member.getRole())
-                            .build();
+                            .id(w.getId()).name(w.getName()).slug(w.getSlug()).role(member.getRole()).build();
                 })
-                .filter(response -> response != null) // Filter out any nulls if workspace wasn't found
+                .filter(res -> res != null)
                 .collect(Collectors.toList());
     }
-
 }
 ```
 
-- in backend/src/test/java/com/fractal/controller/WorkspaceControllerTest.java
+- in backend/src/test/java/com/fractal/backend/controller/WorkspaceControllerTest.java
 
 ```
-package com.fractal.controller;
+package com.fractal.backend.controller;
 
+import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.ObjectMapper; // Import ObjectMapper
-import com.fractal.backend.config.TestSecurityConfig;
-import com.fractal.backend.controller.WorkspaceController;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fractal.backend.dto.CreateWorkspaceRequest;
+import com.fractal.backend.dto.InviteMemberRequest;
+import com.fractal.backend.dto.UpdateWorkspaceRequest;
 import com.fractal.backend.dto.WorkspaceResponse;
 import com.fractal.backend.model.User;
 import com.fractal.backend.model.Workspace;
-import com.fractal.backend.repository.UserRepository;
-import com.fractal.backend.security.CustomOAuth2AuthenticationSuccessHandler;
+import com.fractal.backend.model.WorkspaceMember;
+import com.fractal.backend.security.JwtAuthenticationFilter;
 import com.fractal.backend.service.WorkspaceService;
 
 @WebMvcTest(WorkspaceController.class)
-@Import(TestSecurityConfig.class)
+@AutoConfigureMockMvc(addFilters = false)
 class WorkspaceControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+        @Autowired
+        private MockMvc mockMvc;
 
-    // Use `new ObjectMapper()` directly instead of Autowiring if config is tricky
-    private final ObjectMapper objectMapper = new ObjectMapper();
+        private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @MockitoBean
-    private WorkspaceService workspaceService;
+        @MockitoBean
+        private WorkspaceService workspaceService;
 
-    @MockitoBean
-    private UserRepository userRepository;
+        @MockitoBean
+        private JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @MockitoBean
-    private CustomOAuth2AuthenticationSuccessHandler successHandler;
+        @Test
+        void createWorkspace_ShouldReturnCreatedWorkspace() throws Exception {
+                UUID userId = UUID.randomUUID();
 
-    @Test
-    void createWorkspace_ShouldReturnCreatedWorkspace() throws Exception {
-        // Arrange
-        String email = "test@fractal.com";
-        UUID userId = UUID.randomUUID();
-        String workspaceName = "My New Company";
+                User user = new User();
+                user.setId(userId);
+                user.setEmail("test@fractal.com");
 
-        User mockUser = new User();
-        mockUser.setId(userId);
-        mockUser.setEmail(email);
+                SecurityContextHolder.getContext().setAuthentication(
+                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
 
-        Workspace mockWorkspace = Workspace.builder()
-                .id(UUID.randomUUID())
-                .name(workspaceName)
-                .slug("my-new-company")
-                .ownerId(userId)
-                .build();
+                Workspace workspace = Workspace.builder()
+                                .id(UUID.randomUUID())
+                                .name("My New Company")
+                                .slug("my-new-company")
+                                .ownerId(userId)
+                                .build();
 
-        // Mock DB finding the user by email
-        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+                when(workspaceService.createWorkspace(eq(userId), eq("My New Company")))
+                                .thenReturn(workspace);
 
-        // Mock Service creating the workspace
-        when(workspaceService.createWorkspace(eq(userId), eq(workspaceName))).thenReturn(mockWorkspace);
+                CreateWorkspaceRequest request = new CreateWorkspaceRequest();
+                request.setName("My New Company");
 
-        CreateWorkspaceRequest request = new CreateWorkspaceRequest();
-        request.setName(workspaceName);
+                mockMvc.perform(post("/api/workspaces")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.name").value("My New Company"));
+        }
 
-        // Act & Assert
-        mockMvc.perform(post("/api/workspaces")
-                .with(oauth2Login().attributes(attrs -> attrs.put("email", email)))
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request))) // Use the manual instance
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value(workspaceName))
-                .andExpect(jsonPath("$.slug").value("my-new-company"))
-                .andExpect(jsonPath("$.role").value("OWNER"));
-    }
+        @Test
+        void getUserWorkspaces_ShouldReturnList() throws Exception {
+                UUID userId = UUID.randomUUID();
 
-    @Test
-    void getUserWorkspaces_ShouldReturnList() throws Exception {
-        // Arrange
-        UUID userId = UUID.randomUUID();
-        User mockUser = new User();
-        mockUser.setId(userId);
-        mockUser.setEmail("test@fractal.com");
+                User user = new User();
+                user.setId(userId);
+                user.setEmail("test@fractal.com");
 
-        WorkspaceResponse ws1 = WorkspaceResponse.builder()
-                .id(UUID.randomUUID()).name("WS 1").slug("ws-1").role("OWNER").build();
+                SecurityContextHolder.getContext().setAuthentication(
+                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
 
-        // Mock the user finding (needed for the filter to set the
-        // @AuthenticationPrincipal)
-        when(userRepository.findByEmail("test@fractal.com")).thenReturn(Optional.of(mockUser));
+                WorkspaceResponse ws = WorkspaceResponse.builder()
+                                .id(UUID.randomUUID())
+                                .name("WS 1")
+                                .slug("ws-1")
+                                .role("OWNER")
+                                .build();
 
-        // Mock the service call
-        when(workspaceService.getWorkspacesForUser(userId)).thenReturn(List.of(ws1));
+                when(workspaceService.getWorkspacesForUser(userId))
+                                .thenReturn(List.of(ws));
 
-        // Act & Assert
-        mockMvc.perform(get("/api/workspaces")
-                // We simulate the JWT auth by mocking the OAuth2 user,
-                // OR if you are using the new JWT filter in tests, you might need to mock that
-                // behavior.
-                // For this WebMvcTest, simply injecting the user via security context is
-                // easiest:
-                .with(oauth2Login().attributes(attrs -> attrs.put("email", "test@fractal.com"))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].name").value("WS 1"))
-                .andExpect(jsonPath("$[0].role").value("OWNER"));
+                mockMvc.perform(get("/api/workspaces"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$[0].name").value("WS 1"));
+        }
+
+        @Test
+        void updateWorkspace_ShouldReturnUpdatedWorkspace() throws Exception {
+                UUID userId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+
+                User user = new User();
+                user.setId(userId);
+
+                SecurityContextHolder.getContext().setAuthentication(
+                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+
+                Workspace updatedWorkspace = Workspace.builder()
+                                .id(workspaceId)
+                                .name("Updated Company")
+                                .slug("updated-company")
+                                .ownerId(userId)
+                                .build();
+
+                when(workspaceService.updateWorkspace(eq(userId), eq(workspaceId), eq("Updated Company"),
+                                eq("updated-company")))
+                                .thenReturn(updatedWorkspace);
+
+                UpdateWorkspaceRequest request = new UpdateWorkspaceRequest();
+                request.setName("Updated Company");
+                request.setSlug("updated-company");
+
+                mockMvc.perform(put("/api/workspaces/" + workspaceId)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.name").value("Updated Company"))
+                                .andExpect(jsonPath("$.slug").value("updated-company"))
+                                .andExpect(jsonPath("$.role").value("UNKNOWN"));
+        }
+
+        @Test
+        void deleteWorkspace_ShouldReturnNoContent() throws Exception {
+                UUID userId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+
+                User user = new User();
+                user.setId(userId);
+
+                SecurityContextHolder.getContext().setAuthentication(
+                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+
+                doNothing().when(workspaceService).deleteWorkspace(eq(userId), eq(workspaceId));
+
+                mockMvc.perform(delete("/api/workspaces/" + workspaceId)
+                                .with(csrf()))
+                                .andExpect(status().isNoContent());
+        }
+
+        @Test
+        void inviteMember_ShouldReturnOk() throws Exception {
+                UUID userId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+
+                User user = new User();
+                user.setId(userId);
+
+                SecurityContextHolder.getContext().setAuthentication(
+                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+
+                doNothing().when(workspaceService).inviteMember(eq(userId), eq(workspaceId), eq("new@example.com"),
+                                eq("MEMBER"));
+
+                InviteMemberRequest request = new InviteMemberRequest();
+                request.setEmail("new@example.com");
+                request.setRole("MEMBER");
+
+                mockMvc.perform(post("/api/workspaces/" + workspaceId + "/invite")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk());
+        }
+
+        @Test
+        void acceptInvite_ShouldReturnOk() throws Exception {
+                UUID userId = UUID.randomUUID();
+
+                User user = new User();
+                user.setId(userId);
+
+                SecurityContextHolder.getContext().setAuthentication(
+                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+
+                WorkspaceMember member = WorkspaceMember.builder().build();
+
+                when(workspaceService.acceptInvitation(eq(userId), eq("test-token")))
+                                .thenReturn(member);
+
+                mockMvc.perform(post("/api/workspaces/accept-invite")
+                                .with(csrf())
+                                .param("token", "test-token"))
+                                .andExpect(status().isOk());
+        }
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/service/EmailService.java
+
+```
+package com.fractal.backend.service;
+
+import java.io.IOException;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import com.sendgrid.Method;
+import com.sendgrid.Request;
+import com.sendgrid.Response;
+import com.sendgrid.SendGrid;
+import com.sendgrid.helpers.mail.Mail;
+import com.sendgrid.helpers.mail.objects.Content;
+import com.sendgrid.helpers.mail.objects.Email;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Service
+@Slf4j
+public class EmailService {
+
+    @Value("${SENDGRID_API_KEY}")
+    private String sendGridApiKey;
+
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
+
+    public void sendWorkspaceInvite(String toEmail, String workspaceName, String inviteToken) {
+        String inviteLink = frontendUrl + "/auth/invite?token=" + inviteToken;
+
+        Email from = new Email("no-reply@fractal.com"); // Use a verified sender ID in SendGrid
+        String subject = "You've been invited to join " + workspaceName;
+        Email to = new Email(toEmail);
+
+        String htmlContent = String.format(
+                "<h1>Join %s on Fractal</h1>" +
+                        "<p>You have been invited to collaborate on <strong>%s</strong>.</p>" +
+                        "<p><a href='%s' style='background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>Accept Invitation</a></p>"
+                        +
+                        "<p>Or copy this link: %s</p>",
+                workspaceName, workspaceName, inviteLink, inviteLink);
+
+        Content content = new Content("text/html", htmlContent);
+        Mail mail = new Mail(from, subject, to, content);
+
+        SendGrid sg = new SendGrid(sendGridApiKey);
+        Request request = new Request();
+        try {
+            request.setMethod(Method.POST);
+            request.setEndpoint("mail/send");
+            request.setBody(mail.build());
+            Response response = sg.api(request);
+            if (response.getStatusCode() >= 400) {
+                log.error("Failed to send email: " + response.getBody());
+            } else {
+                log.info("Invitation email sent to " + toEmail);
+            }
+        } catch (IOException ex) {
+            log.error("Error sending email", ex);
+        }
     }
 }
 ```
@@ -1866,10 +2246,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @lombok.NonNull HttpServletResponse response,
             @lombok.NonNull FilterChain filterChain) throws ServletException, IOException {
 
+        // --- DEBUG LOG 1: Entry Point ---
+        System.out.println(">>> [JWT FILTER] Entered filter for URI: " + request.getRequestURI());
+
         final String authHeader = request.getHeader("Authorization");
+
+        // --- DEBUG LOG 2: Check Header ---
+        System.out.println(">>> [JWT FILTER] Authorization Header found: " + (authHeader != null));
+
         final String jwt;
         final String userEmail;
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            // --- DEBUG LOG 3: No Token Logic ---
+            System.out.println(">>> [JWT FILTER] No Bearer token found. Passing request down the chain.");
             filterChain.doFilter(request, response);
             return;
         }
@@ -1882,7 +2271,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
                 // 3. Load user from DB
-                // Ideally use a UserDetailsService, but we can fetch directly for now
                 User user = userRepository.findByEmail(userEmail).orElse(null);
 
                 if (user != null && jwtService.isTokenValid(jwt, user.getEmail())) {
@@ -1893,13 +2281,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+
+                    System.out.println(">>> [JWT FILTER] User authenticated successfully via JWT: " + userEmail);
                 }
             }
         } catch (Exception e) {
             // Token invalid or expired
-            logger.error("Cannot set user authentication: {}", e);
+            System.err.println(">>> [JWT FILTER] Exception processing token: " + e.getMessage());
         }
 
+        // --- DEBUG LOG 4: Chain Continuation ---
+        System.out.println(">>> [JWT FILTER] Proceeding with filter chain...");
         filterChain.doFilter(request, response);
     }
 }
@@ -2003,6 +2395,38 @@ then in pom.xml:
         </dependency>
         ```
 
+- in backend/src/main/java/com/fractal/backend/dto/InviteMemberRequest.java
+```
+package com.fractal.backend.dto;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
+
+@Data
+public class InviteMemberRequest {
+    @NotBlank
+    @Email
+    private String email;
+
+    private String role = "MEMBER";
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/UpdateWorkspaceRequest.java
+```
+package com.fractal.backend.dto;
+
+import lombok.Data;
+
+@Data
+public class UpdateWorkspaceRequest {
+    private String name;
+    private String slug;
+}
+```
+
+- in
 
 
 
@@ -2194,6 +2618,7 @@ processedRef.current = true;
 }, [router, searchParams]);
 
 return (
+
 <div className="flex h-screen w-full items-center justify-center bg-background">
 <div className="flex flex-col items-center gap-4">
 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -2279,6 +2704,7 @@ e.preventDefault()
 const slug = generateSlug(workspaceName)
 
 return (
+
 <div className="min-h-screen flex flex-col bg-muted/30">
 {/_ Header _/}
 <header className="border-b bg-background/80 backdrop-blur-sm">
@@ -2578,6 +3004,7 @@ router.push("/login");
 };
 
 return (
+
 <div className="min-h-screen flex flex-col bg-muted/30">
 {/_ Header _/}
 <header className="border-b bg-background/80 backdrop-blur-sm">
@@ -2746,6 +3173,7 @@ router,
 
 if (!isAuthenticated) {
 return (
+
 <div className="min-h-screen flex items-center justify-center bg-background">
 <div className="flex flex-col items-center gap-2">
 <div className="animate-pulse text-muted-foreground">
@@ -2758,6 +3186,7 @@ Authenticating...
 
 if (isLoading || !isWorkspaceResolved) {
 return (
+
 <div className="min-h-screen flex items-center justify-center bg-background">
 <div className="flex flex-col items-center gap-2">
 <div className="animate-pulse text-muted-foreground">
