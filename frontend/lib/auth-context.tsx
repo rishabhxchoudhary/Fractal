@@ -28,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: null,
     workspaces: [],
     currentWorkspace: null,
+    currentRole: null,
     isLoading: true,
     isAuthenticated: false,
   });
@@ -38,10 +39,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         apiClient.getCurrentUser(),
         apiClient.getUserWorkspaces(),
       ]);
+      
+      // Restore current workspace from localStorage if available
+      let currentWorkspace = null;
+      let currentRole = null;
+      if (typeof window !== "undefined") {
+        const savedWorkspaceId = localStorage.getItem("currentWorkspaceId");
+        if (savedWorkspaceId) {
+          currentWorkspace = workspaces.find((w) => w.id === savedWorkspaceId) || null;
+          currentRole = currentWorkspace?.role || null;
+        }
+      }
+      
       setState((prev) => ({
         ...prev,
         user,
         workspaces,
+        currentWorkspace,
+        currentRole,
         isAuthenticated: true,
         isLoading: false,
       }));
@@ -50,6 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ...prev,
         user: null,
         workspaces: [],
+        currentWorkspace: null,
+        currentRole: null,
         isAuthenticated: false,
         isLoading: false,
       }));
@@ -74,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: null,
       workspaces: [],
       currentWorkspace: null,
+      currentRole: null,
       isLoading: false,
       isAuthenticated: false,
     });
@@ -81,7 +99,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setCurrentWorkspace = useCallback((workspace: Workspace) => {
-    setState((prev) => ({ ...prev, currentWorkspace: workspace }));
+    setState((prev) => ({ 
+      ...prev, 
+      currentWorkspace: workspace,
+      currentRole: workspace.role || null,
+    }));
     if (typeof window !== "undefined") {
       localStorage.setItem("currentWorkspaceId", workspace.id);
     }
@@ -89,16 +111,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshWorkspaces = useCallback(async () => {
     const workspaces = await apiClient.getUserWorkspaces();
-    setState((prev) => ({ ...prev, workspaces }));
+    
+    // Update currentRole if currentWorkspace still exists
+    setState((prev) => {
+      const currentWorkspace = prev.currentWorkspace
+        ? workspaces.find((w) => w.id === prev.currentWorkspace?.id) || null
+        : null;
+      
+      return {
+        ...prev,
+        workspaces,
+        currentWorkspace,
+        currentRole: currentWorkspace?.role || null,
+      };
+    });
+    
     return workspaces;
   }, []);
 
   const handleAuthCallback = useCallback(async (code: string) => {
     const response = await apiClient.handleOAuthCallback(code);
+    
+    // Set first workspace as current if available
+    const firstWorkspace = response.workspaces[0] || null;
+    const currentRole = firstWorkspace?.role || null;
+    
+    if (firstWorkspace && typeof window !== "undefined") {
+      localStorage.setItem("currentWorkspaceId", firstWorkspace.id);
+    }
+    
     setState((prev) => ({
       ...prev,
       user: response.user,
       workspaces: response.workspaces,
+      currentWorkspace: firstWorkspace,
+      currentRole,
       isAuthenticated: true,
       isLoading: false,
     }));

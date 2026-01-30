@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Building2, Check, ChevronsUpDown, Plus, Settings } from "lucide-react";
 import type { Workspace } from "@/lib/types";
+import { PermissionGuard } from "@/components/rbac/permission-guard";
+import { WorkspacePermission } from "@/lib/permissions";
 
 interface WorkspaceSelectorProps {
   className?: string;
@@ -100,10 +102,12 @@ export function WorkspaceSelector({ className }: WorkspaceSelectorProps) {
           <Plus className="h-4 w-4 mr-2" />
           Create new workspace
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleWorkspaceSettings} className="cursor-pointer">
-          <Settings className="h-4 w-4 mr-2" />
-          Workspace settings
-        </DropdownMenuItem>
+        <PermissionGuard permission={WorkspacePermission.ACCESS_SETTINGS} showFallback={false}>
+          <DropdownMenuItem onClick={handleWorkspaceSettings} className="cursor-pointer">
+            <Settings className="h-4 w-4 mr-2" />
+            Workspace settings
+          </DropdownMenuItem>
+        </PermissionGuard>
       </DropdownMenuContent>
     </DropdownMenu>
   );

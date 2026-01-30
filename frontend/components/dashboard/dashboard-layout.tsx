@@ -25,6 +25,8 @@ import {
   Settings,
   User,
 } from "lucide-react"
+import { PermissionGuard } from "@/components/rbac/permission-guard"
+import { WorkspacePermission } from "@/lib/permissions"
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -96,14 +98,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <HelpCircle className="h-4 w-4" />
             <span>Help & Support</span>
           </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-2 text-muted-foreground h-9"
-            onClick={handleSettingsClick}
-          >
-            <Settings className="h-4 w-4" />
-            <span>Settings</span>
-          </Button>
+          <PermissionGuard permission={WorkspacePermission.ACCESS_SETTINGS} showFallback={false}>
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-muted-foreground h-9"
+              onClick={handleSettingsClick}
+            >
+              <Settings className="h-4 w-4" />
+              <span>Settings</span>
+            </Button>
+          </PermissionGuard>
         </div>
       </aside>
 
@@ -149,10 +153,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   <User className="h-4 w-4 mr-2" />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleSettingsClick}>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Settings
-                </DropdownMenuItem>
+                <PermissionGuard permission={WorkspacePermission.ACCESS_SETTINGS} showFallback={false}>
+                  <DropdownMenuItem onClick={handleSettingsClick}>
+                    <Settings className="h-4 w-4 mr-2" />
+                    Settings
+                  </DropdownMenuItem>
+                </PermissionGuard>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleLogout}

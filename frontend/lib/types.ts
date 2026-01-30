@@ -9,7 +9,7 @@ export interface Workspace {
   id: string
   name: string
   slug: string
-  role: "OWNER" | "ADMIN" | "MEMBER" | "VIEWER"
+  role: "OWNER" | "ADMIN" | "MEMBER"
   createdAt?: string
 }
 
@@ -18,7 +18,7 @@ export interface WorkspaceMember {
   email: string
   fullName: string
   avatarUrl?: string
-  role: "OWNER" | "ADMIN" | "MEMBER" | "VIEWER"
+  role: "OWNER" | "ADMIN" | "MEMBER"
   joinedAt: string
 }
 
@@ -26,6 +26,7 @@ export interface AuthState {
   user: User | null
   workspaces: Workspace[]
   currentWorkspace: Workspace | null
+  currentRole: "OWNER" | "ADMIN" | "MEMBER" | null
   isLoading: boolean
   isAuthenticated: boolean
 }

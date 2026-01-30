@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { getSubdomain } from "@/lib/utils";
+import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 
 export default function DomainLayout({
   children,
@@ -94,5 +95,5 @@ export default function DomainLayout({
     );
   }
 
-  return children;
+  return <DashboardLayout>{children}</DashboardLayout>;
 }

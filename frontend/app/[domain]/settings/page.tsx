@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { apiClient } from "@/lib/api";
-import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 import type { WorkspaceMember } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,11 +39,29 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { AlertTriangle, Loader2, Mail, Users, Trash2, Shield } from "lucide-react";
-import { getSubdomain } from "@/lib/utils";
+import { PermissionGuard } from "@/components/rbac/permission-guard";
+import { WorkspacePermission } from "@/lib/permissions";
+import {
+  useCanUpdateWorkspace,
+  useCanDeleteWorkspace,
+  useCanInviteMembers,
+  useCanInviteAdmins,
+  useCanRemoveMembers,
+  useCanUpdateMemberRoles,
+} from "@/lib/hooks/use-permissions";
+import { RoleBadge } from "@/components/rbac/role-badge";
 
 export default function WorkspaceSettingsPage() {
   const router = useRouter();
   const { currentWorkspace, refreshWorkspaces } = useAuth();
+  
+  // Permission checks using hooks
+  const canUpdateWorkspace = useCanUpdateWorkspace();
+  const canDeleteWorkspace = useCanDeleteWorkspace();
+  const canInviteMembers = useCanInviteMembers();
+  const canInviteAdmins = useCanInviteAdmins();
+  const canRemoveMembers = useCanRemoveMembers();
+  const canUpdateMemberRoles = useCanUpdateMemberRoles();
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaceSlug, setWorkspaceSlug] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
@@ -81,6 +98,11 @@ export default function WorkspaceSettingsPage() {
 
   const handleUpdateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!canUpdateWorkspace) {
+      toast.error("You don't have permission to update workspace settings");
+      return;
+    }
 
     if (!workspaceName.trim()) {
       toast.error("Workspace name is required");
@@ -129,6 +151,11 @@ export default function WorkspaceSettingsPage() {
   };
 
   const handleDeleteWorkspace = async () => {
+    if (!canDeleteWorkspace) {
+      toast.error("Only workspace owners can delete workspaces");
+      return;
+    }
+
     setIsDeleting(true);
 
     try {
@@ -173,6 +200,17 @@ export default function WorkspaceSettingsPage() {
   const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!canInviteMembers) {
+      toast.error("You don't have permission to invite members");
+      return;
+    }
+
+    // Only OWNER can invite ADMIN
+    if (inviteRole === "ADMIN" && !canInviteAdmins) {
+      toast.error("Only workspace owners can invite admins");
+      return;
+    }
+
     if (!inviteEmail.trim()) {
       toast.error("Email is required");
       return;
@@ -203,6 +241,11 @@ export default function WorkspaceSettingsPage() {
   const handleRemoveMember = async (userId: string, memberEmail: string) => {
     if (!currentWorkspace) return;
 
+    if (!canRemoveMembers) {
+      toast.error("Only workspace owners can remove members");
+      return;
+    }
+
     try {
       await apiClient.removeMember(currentWorkspace.id, userId);
       toast.success(`Removed ${memberEmail} from workspace`);
@@ -217,6 +260,11 @@ export default function WorkspaceSettingsPage() {
   const handleUpdateMemberRole = async (userId: string, newRole: string) => {
     if (!currentWorkspace) return;
 
+    if (!canUpdateMemberRoles) {
+      toast.error("Only workspace owners can update member roles");
+      return;
+    }
+
     try {
       await apiClient.updateMemberRole(currentWorkspace.id, userId, newRole);
       toast.success("Member role updated successfully");
@@ -229,7 +277,10 @@ export default function WorkspaceSettingsPage() {
   };
 
   return (
-    <DashboardLayout>
+    <PermissionGuard
+      permission={WorkspacePermission.ACCESS_SETTINGS}
+      redirectTo="/dashboard"
+    >
       <div className="flex flex-col">
         {/* Header */}
         <div className="border-b bg-background/80 px-6 py-4">
@@ -252,16 +303,17 @@ export default function WorkspaceSettingsPage() {
 
               {/* General Tab */}
               <TabsContent value="general" className="space-y-6">
-                {/* Basic Settings */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Workspace Information</CardTitle>
-                    <CardDescription>
-                      Update your workspace name and custom URL slug
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <form onSubmit={handleUpdateWorkspace} className="space-y-6">
+                {/* Basic Settings - Only visible to OWNER and ADMIN */}
+                <PermissionGuard permission={WorkspacePermission.UPDATE_WORKSPACE}>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Workspace Information</CardTitle>
+                      <CardDescription>
+                        Update your workspace name and custom URL slug
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleUpdateWorkspace} className="space-y-6">
                       <div className="space-y-2">
                         <Label htmlFor="workspace-name">Workspace Name</Label>
                         <Input
@@ -306,47 +358,52 @@ export default function WorkspaceSettingsPage() {
                     </form>
                   </CardContent>
                 </Card>
+                </PermissionGuard>
 
-                {/* Danger Zone */}
-                <Card className="border-destructive/50 bg-destructive/5">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-destructive">
-                      <AlertTriangle className="h-5 w-5" />
-                      Danger Zone
-                    </CardTitle>
-                    <CardDescription>
-                      Irreversible and destructive actions
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <p className="text-sm text-muted-foreground">
-                        Deleting a workspace will permanently remove it along with all associated data. This action cannot be undone.
-                      </p>
-                      <Button
-                        variant="destructive"
-                        onClick={() => setShowDeleteDialog(true)}
-                        disabled={isDeleting}
-                      >
-                        Delete Workspace
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                {/* Danger Zone - Only visible to OWNER */}
+                <PermissionGuard permission={WorkspacePermission.DELETE_WORKSPACE}>
+                  <Card className="border-destructive/50 bg-destructive/5">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-destructive">
+                        <AlertTriangle className="h-5 w-5" />
+                        Danger Zone
+                      </CardTitle>
+                      <CardDescription>
+                        Irreversible and destructive actions
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                          Deleting a workspace will permanently remove it along with all associated data. This action cannot be undone. Only workspace owners can delete workspaces.
+                        </p>
+                        <Button
+                          variant="destructive"
+                          onClick={() => setShowDeleteDialog(true)}
+                          disabled={isDeleting}
+                        >
+                          Delete Workspace
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </PermissionGuard>
               </TabsContent>
 
               {/* Members Tab */}
               <TabsContent value="members" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="h-5 w-5" />
-                      Invite Member
-                    </CardTitle>
-                    <CardDescription>
-                      Invite new members to your workspace
-                    </CardDescription>
-                  </CardHeader>
+                {/* Invite Member - Only visible to OWNER and ADMIN */}
+                <PermissionGuard permission={WorkspacePermission.INVITE_MEMBER}>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        Invite Member
+                      </CardTitle>
+                      <CardDescription>
+                        Invite new members to your workspace
+                      </CardDescription>
+                    </CardHeader>
                   <CardContent>
                     <form onSubmit={handleInviteMember} className="space-y-6">
                       <div className="space-y-2">
@@ -370,9 +427,16 @@ export default function WorkspaceSettingsPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="MEMBER">Member</SelectItem>
-                            <SelectItem value="ADMIN">Admin</SelectItem>
+                            {canInviteAdmins && (
+                              <SelectItem value="ADMIN">Admin</SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
+                        {!canInviteAdmins && (
+                          <p className="text-xs text-muted-foreground">
+                            Admins can only invite members. Only owners can invite admins.
+                          </p>
+                        )}
                       </div>
 
                       <Button
@@ -395,6 +459,7 @@ export default function WorkspaceSettingsPage() {
                     </form>
                   </CardContent>
                 </Card>
+                </PermissionGuard>
 
                 <Card>
                   <CardHeader>
@@ -429,7 +494,10 @@ export default function WorkspaceSettingsPage() {
                               </p>
                             </div>
                             <div className="flex items-center gap-3">
-                              {member.role !== "OWNER" && (
+                              {member.role === "OWNER" && (
+                                <RoleBadge role="OWNER" />
+                              )}
+                              {member.role !== "OWNER" && canUpdateMemberRoles && (
                                 <>
                                   <Select
                                     value={member.role}
@@ -443,25 +511,24 @@ export default function WorkspaceSettingsPage() {
                                     <SelectContent>
                                       <SelectItem value="MEMBER">Member</SelectItem>
                                       <SelectItem value="ADMIN">Admin</SelectItem>
-                                      <SelectItem value="VIEWER">Viewer</SelectItem>
                                     </SelectContent>
                                   </Select>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleRemoveMember(member.id, member.email)
-                                    }
-                                    className="text-destructive hover:text-destructive"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
+                                  {canRemoveMembers && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleRemoveMember(member.id, member.email)
+                                      }
+                                      className="text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
                                 </>
                               )}
-                              {member.role === "OWNER" && (
-                                <span className="text-sm font-semibold text-blue-600">
-                                  Owner
-                                </span>
+                              {member.role !== "OWNER" && !canUpdateMemberRoles && (
+                                <RoleBadge role={member.role} />
                               )}
                             </div>
                           </div>
@@ -474,37 +541,37 @@ export default function WorkspaceSettingsPage() {
             </Tabs>
           </div>
         </div>
-      </div>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Workspace?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. All data associated with this workspace will be permanently deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex gap-3">
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteWorkspace}
-              disabled={isDeleting}
-              className="text-white"
-            >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Deleting...
-                </>
-              ) : (
-                "Delete Workspace"
-              )}
-            </Button>
-          </div>
-        </AlertDialogContent>
-      </AlertDialog>
-    </DashboardLayout>
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Workspace?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. All data associated with this workspace will be permanently deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex gap-3">
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteWorkspace}
+                disabled={isDeleting}
+                className="text-white"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete Workspace"
+                )}
+              </Button>
+            </div>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </PermissionGuard>
   );
 }

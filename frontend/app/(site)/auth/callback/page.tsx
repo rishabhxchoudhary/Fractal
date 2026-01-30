@@ -49,6 +49,7 @@ function AuthCallbackContent() {
           console.warn("Could not fetch workspaces, redirecting to default", e);
           router.replace("/select-workspace");
         }
+        // Note: currentRole is automatically set by refreshWorkspaces in auth-context
       } catch (error) {
         console.error("Failed to process login", error);
         router.push("/login?error=auth_failed");
