@@ -6,7 +6,6 @@ import {
   useCallback,
   type ReactNode,
   useState,
-  useEffect,
 } from "react";
 import { apiClient } from "./api";
 import type { Project, CreateProjectRequest } from "./types";

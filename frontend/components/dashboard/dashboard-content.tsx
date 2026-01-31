@@ -1,19 +1,44 @@
 "use client"
 
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useProjects } from "@/lib/project-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Calendar, CheckCircle2, Clock, Plus, Target, FolderOpen } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Calendar, CheckCircle2, Clock, Plus, Target, FolderOpen, ArrowRight } from "lucide-react"
 
 export function DashboardContent() {
+  const router = useRouter()
   const { user, currentWorkspace } = useAuth()
-  const { currentProject } = useProjects()
+  const { currentProject, projects, refreshProjects } = useProjects()
+
+  useEffect(() => {
+    if (currentWorkspace?.id) {
+      refreshProjects(currentWorkspace.id)
+    }
+  }, [currentWorkspace?.id, refreshProjects])
 
   const quickActions = [
-    { icon: Plus, label: "New Task", description: "Create a new task" },
-    { icon: Target, label: "New Project", description: "Start a new project" },
-    { icon: Calendar, label: "Schedule", description: "View your calendar" },
+    { 
+      icon: Plus, 
+      label: "New Task", 
+      description: "Create a new task",
+      action: () => router.push("/dashboard/tasks?new=true")
+    },
+    { 
+      icon: Target, 
+      label: "View Projects", 
+      description: "Manage your projects",
+      action: () => router.push("/projects")
+    },
+    { 
+      icon: Calendar, 
+      label: "Schedule", 
+      description: "View your calendar",
+      action: () => router.push("/dashboard/calendar")
+    },
   ]
 
   return (
@@ -66,9 +91,9 @@ export function DashboardContent() {
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div>
+            <div className="text-2xl font-bold">{projects.length}</div>
             <p className="text-xs text-muted-foreground">
-              Create your first project
+              {projects.length === 0 ? "Create your first project" : "Manage your projects"}
             </p>
           </CardContent>
         </Card>
@@ -88,7 +113,8 @@ export function DashboardContent() {
               <Button
                 key={action.label}
                 variant="outline"
-                className="h-auto flex-col items-start gap-2 p-4 bg-transparent"
+                className="h-auto flex-col items-start gap-2 p-4 bg-transparent hover:bg-muted/50"
+                onClick={action.action}
               >
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-lg bg-foreground/5 flex items-center justify-center">
@@ -104,6 +130,63 @@ export function DashboardContent() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Recent Projects */}
+      {projects.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Your Projects</CardTitle>
+                <CardDescription>
+                  Quick access to your recent projects
+                </CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/projects")}
+                className="gap-1"
+              >
+                View All <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {projects.slice(0, 5).map((project) => (
+                <div
+                  key={project.id}
+                  onClick={() => router.push(`/projects/${project.id}`)}
+                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div
+                      className="h-3 w-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: project.color || "#808080" }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{project.name}</p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="flex-shrink-0">
+                    {project.role}
+                  </Badge>
+                </div>
+              ))}
+              {projects.length > 5 && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => router.push("/projects")}
+                >
+                  View all {projects.length} projects
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Getting started */}
       <Card>
