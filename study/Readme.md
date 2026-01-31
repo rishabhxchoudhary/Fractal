@@ -657,13 +657,17 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "users")
-@Data // Lombok: Generates Getters, Setters, toString, etc.
+@Data
 @NoArgsConstructor
+@Builder
+@AllArgsConstructor
 public class User {
 
     @Id
@@ -680,7 +684,7 @@ public class User {
     private String avatarUrl;
 
     @Column(name = "is_active")
-    private boolean isActive = true;
+    private boolean isActive;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -2712,13 +2716,1078 @@ public class UpdateWorkspaceRequest {
 }
 ```
 
+then i created the project routes..
+- in backend/src/main/resources/db/migration/V3__add_projects.sql
+
+```sql
+-- 1. PROJECTS TABLE
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    parent_id UUID, -- distinct from hierarchy table, useful for UI parent pointers
+    name VARCHAR(255) NOT NULL,
+    color VARCHAR(7), -- e.g. #FF5733
+    is_archived BOOLEAN DEFAULT FALSE,
+    created_by UUID NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ DEFAULT NULL
+);
+
+CREATE INDEX idx_projects_workspace ON projects(workspace_id);
+CREATE INDEX idx_projects_deleted_at ON projects(deleted_at);
+
+-- 2. PROJECT HIERARCHY (Closure Table for Infinite Nesting)
+CREATE TABLE project_hierarchy (
+    ancestor_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    descendant_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    depth INT NOT NULL,
+    PRIMARY KEY (ancestor_id, descendant_id)
+);
+
+-- 3. PROJECT MEMBERS
+CREATE TABLE project_members (
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL DEFAULT 'VIEWER', -- 'OWNER', 'ADMIN', 'EDITOR', 'VIEWER'
+    is_favorite BOOLEAN DEFAULT FALSE,
+    notifications_enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (project_id, user_id)
+);
+
+CREATE INDEX idx_project_members_user ON project_members(user_id);
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/AddProjectMemberRequest.java
+```
+package com.fractal.backend.dto;
+
+import java.util.UUID;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class AddProjectMemberRequest {
+    @NotNull
+    private UUID userId;
+    private String role = "VIEWER";
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/CreateProjectRequest.java
+```
+package com.fractal.backend.dto;
+
+import java.util.UUID;
+
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
+
+@Data
+public class CreateProjectRequest {
+    @NotBlank(message = "Name is required")
+    private String name;
+    private String color;
+    private UUID parentId;
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/ProjectMemberDTO.java
+```
+package com.fractal.backend.dto;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+
+@Data
+@AllArgsConstructor
+public class ProjectMemberDTO {
+    private UUID userId;
+    private String email;
+    private String fullName;
+    private String avatarUrl;
+    private String role;
+    private OffsetDateTime joinedAt;
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/ProjectResponse.java
+```
+package com.fractal.backend.dto;
+
+import java.util.UUID;
+
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class ProjectResponse {
+    private UUID id;
+    private String name;
+    private String color;
+    private UUID parentId;
+    private String role;
+    private boolean isArchived;
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/TransferProjectOwnershipRequest.java
+```
+package com.fractal.backend.dto;
+
+import java.util.UUID;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class TransferProjectOwnershipRequest {
+    @NotNull
+    private UUID newOwnerId;
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/dto/UpdateProjectMemberRequest.java
+```
+package com.fractal.backend.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
+
+@Data
+public class UpdateProjectMemberRequest {
+    @NotBlank
+    private String role; // 'ADMIN', 'EDITOR', 'VIEWER'
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/model/Project.java
+```
+package com.fractal.backend.model;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.SQLRestriction;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "projects")
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@SQLRestriction("deleted_at IS NULL")
+public class Project {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.AUTO)
+    private UUID id;
+
+    @Column(name = "workspace_id", nullable = false)
+    private UUID workspaceId;
+
+    @Column(name = "parent_id")
+    private UUID parentId;
+
+    @Column(nullable = false)
+    private String name;
+
+    private String color;
+
+    @Column(name = "is_archived")
+    private boolean isArchived;
+
+    @Column(name = "created_by", nullable = false)
+    private UUID createdBy;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private OffsetDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private OffsetDateTime updatedAt;
+
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/model/ProjectMember.java
+```
+package com.fractal.backend.model;
+
+import java.io.Serializable;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+import org.hibernate.annotations.CreationTimestamp;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "project_members")
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@IdClass(ProjectMember.ProjectMemberId.class)
+public class ProjectMember {
+
+    @Id
+    @Column(name = "project_id")
+    private UUID projectId;
+
+    @Id
+    @Column(name = "user_id")
+    private UUID userId;
+
+    @Column(nullable = false)
+    private String role; // OWNER, ADMIN, EDITOR, VIEWER
+
+    @Column(name = "is_favorite")
+    private boolean isFavorite;
+
+    @CreationTimestamp
+    @Column(name = "created_at")
+    private OffsetDateTime createdAt;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ProjectMemberId implements Serializable {
+        private UUID projectId;
+        private UUID userId;
+    }
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/repository/ProjectMemberRepository.java
+```
+package com.fractal.backend.repository;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import com.fractal.backend.dto.ProjectMemberDTO;
+import com.fractal.backend.model.ProjectMember;
+
+@Repository
+public interface ProjectMemberRepository extends JpaRepository<ProjectMember, ProjectMember.ProjectMemberId> {
+
+    Optional<ProjectMember> findByProjectIdAndUserId(UUID projectId, UUID userId);
+
+    List<ProjectMember> findAllByProjectId(UUID projectId);
+
+    // Bulk delete for cascading removal of a user from sub-projects
+    @Modifying
+    @Query("DELETE FROM ProjectMember pm WHERE pm.userId = :userId AND pm.projectId IN :projectIds")
+    void deleteAllByUserIdAndProjectIdIn(UUID userId, List<UUID> projectIds);
+
+    // Fetch members DTO
+    @Query("SELECT new com.fractal.backend.dto.ProjectMemberDTO(u.id, u.email, u.fullName, u.avatarUrl, pm.role, pm.createdAt) "
+            +
+            "FROM ProjectMember pm JOIN User u ON pm.userId = u.id " +
+            "WHERE pm.projectId = :projectId")
+    List<ProjectMemberDTO> findMembersWithDetails(UUID projectId);
+}
+```
+
+- in backend/src/main/java/com/fractal/backend/repository/ProjectRepository.java
+```
+package com.fractal.backend.repository;
+
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import com.fractal.backend.model.Project;
+
+@Repository
+public interface ProjectRepository extends JpaRepository<Project, UUID> {
+
+    @Query("SELECT p FROM Project p " +
+            "JOIN ProjectMember pm ON p.id = pm.projectId " +
+            "WHERE p.workspaceId = :workspaceId AND pm.userId = :userId " +
+            "AND p.deletedAt IS NULL")
+    List<Project> findAllByWorkspaceIdAndUserId(UUID workspaceId, UUID userId);
+
+    boolean existsByIdAndWorkspaceId(UUID id, UUID workspaceId);
+
+    // --- Closure Table Logic ---
+
+    // 1. Insert Self Reference (depth 0)
+    @Modifying
+    @Query(value = "INSERT INTO project_hierarchy (ancestor_id, descendant_id, depth) VALUES (:projectId, :projectId, 0)", nativeQuery = true)
+    void insertSelfReference(UUID projectId);
+
+    // 2. Insert Hierarchy (Copy paths from parent)
+    @Modifying
+    @Query(value = """
+                INSERT INTO project_hierarchy (ancestor_id, descendant_id, depth)
+                SELECT ancestor_id, :descendantId, depth + 1
+                FROM project_hierarchy
+                WHERE descendant_id = :parentId
+            """, nativeQuery = true)
+    void insertHierarchy(UUID parentId, UUID descendantId);
+
+    // 3. Find IDs for Cascade Delete (Including Self)
+    @Query(value = """
+                SELECT descendant_id FROM project_hierarchy
+                WHERE ancestor_id = :projectId
+            """, nativeQuery = true)
+    List<UUID> findAllDescendantIdsIncludingSelf(UUID projectId);
+
+    // 4. Find IDs for Member Cascade (Excluding Self usually, but here generally
+    // descendants)
+    @Query(value = """
+                SELECT descendant_id FROM project_hierarchy
+                WHERE ancestor_id = :projectId AND depth > 0
+            """, nativeQuery = true)
+    List<UUID> findAllDescendantIds(UUID projectId);
+}
+```
+
+- in backend/src/test/java/com/fractal/service/ProjectServiceTest.java
+```
+package com.fractal.service;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import static org.mockito.ArgumentMatchers.any;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.fractal.backend.model.Project;
+import com.fractal.backend.model.ProjectMember;
+import com.fractal.backend.model.WorkspaceMember;
+import com.fractal.backend.repository.ProjectMemberRepository;
+import com.fractal.backend.repository.ProjectRepository;
+import com.fractal.backend.repository.UserRepository;
+import com.fractal.backend.repository.WorkspaceMemberRepository;
+import com.fractal.backend.service.ProjectService;
+
+@ExtendWith(MockitoExtension.class)
+class ProjectServiceTest {
+
+        @Mock
+        private ProjectRepository projectRepository;
+        @Mock
+        private ProjectMemberRepository projectMemberRepository;
+        @Mock
+        private WorkspaceMemberRepository workspaceMemberRepository;
+        @Mock
+        private UserRepository userRepository;
+
+        @InjectMocks
+        private ProjectService projectService;
+
+        // ==================================================================================
+        // 1. CREATE PROJECT TESTS
+        // ==================================================================================
+
+        @Test
+        @DisplayName("createProject - Should succeed for a valid root project")
+        void createProject_ShouldSucceedForRootProject() {
+                // Arrange
+                UUID userId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+                Project project = Project.builder().id(UUID.randomUUID()).build();
+
+                when(workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, userId))
+                                .thenReturn(Optional.of(new WorkspaceMember()));
+                when(projectRepository.save(any(Project.class))).thenReturn(project);
+
+                // Act
+                Project result = projectService.createProject(userId, workspaceId, "Test", "#FFF", null);
+
+                // Assert
+                assertThat(result).isNotNull();
+                verify(projectRepository).insertSelfReference(project.getId());
+                verify(projectRepository, never()).insertHierarchy(any(), any()); // No parent
+                verify(projectMemberRepository).save(any(ProjectMember.class)); // Creator is owner
+        }
+
+        @Test
+        @DisplayName("createProject - Should throw FORBIDDEN when user is not in workspace")
+        void createProject_ShouldThrowForbidden_WhenNotInWorkspace() {
+                // Arrange
+                UUID userId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+                when(workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, userId))
+                                .thenReturn(Optional.empty());
+
+                // Act & Assert
+                var exception = assertThrows(ResponseStatusException.class,
+                                () -> projectService.createProject(userId, workspaceId, "Test", null, null));
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        }
+
+        @Test
+        @DisplayName("createProject - Should inherit members for a sub-project")
+        void createProject_ShouldInheritMembersForSubProject() {
+                // Arrange
+                UUID userId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+                UUID parentId = UUID.randomUUID();
+                Project project = Project.builder().id(UUID.randomUUID()).build();
+                ProjectMember parentMember = ProjectMember.builder().userId(UUID.randomUUID()).role("EDITOR").build();
+
+                when(workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, userId))
+                                .thenReturn(Optional.of(new WorkspaceMember()));
+                when(projectRepository.existsByIdAndWorkspaceId(parentId, workspaceId)).thenReturn(true);
+                when(projectMemberRepository.findByProjectIdAndUserId(parentId, userId))
+                                .thenReturn(Optional.of(new ProjectMember()));
+                when(projectRepository.save(any(Project.class))).thenReturn(project);
+                when(projectMemberRepository.findAllByProjectId(parentId)).thenReturn(List.of(parentMember));
+
+                // Act
+                projectService.createProject(userId, workspaceId, "Sub-project", null, parentId);
+
+                // Assert
+                verify(projectRepository).insertHierarchy(parentId, project.getId());
+                verify(projectMemberRepository).saveAll(any()); // Verify inheritance was called
+        }
+
+        // ==================================================================================
+        // 2. DELETE PROJECT TESTS
+        // ==================================================================================
+
+        @Test
+        @DisplayName("deleteProject - Should cascade soft delete to all descendants")
+        void deleteProject_ShouldCascadeSoftDelete() {
+                // Arrange
+                UUID userId = UUID.randomUUID();
+                UUID projectId = UUID.randomUUID();
+                UUID childId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+
+                Project project = Project.builder().id(projectId).workspaceId(workspaceId).build();
+                Project childProject = Project.builder().id(childId).workspaceId(workspaceId).build();
+                List<UUID> descendantIds = List.of(projectId, childId);
+
+                // Mock permission checks
+                when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
+                when(workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, userId))
+                                .thenReturn(Optional.of(WorkspaceMember.builder().role("MEMBER").build()));
+                when(projectMemberRepository.findByProjectIdAndUserId(projectId, userId))
+                                .thenReturn(Optional.of(ProjectMember.builder().role("OWNER").build()));
+
+                // Mock the cascade logic
+                when(projectRepository.findAllDescendantIdsIncludingSelf(projectId)).thenReturn(descendantIds);
+                when(projectRepository.findAllById(descendantIds)).thenReturn(List.of(project, childProject));
+
+                // Act
+                projectService.deleteProject(userId, projectId);
+
+                // Assert
+                ArgumentCaptor<List<Project>> captor = ArgumentCaptor.forClass(List.class);
+                verify(projectRepository).saveAll(captor.capture());
+
+                List<Project> savedProjects = captor.getValue();
+                assertThat(savedProjects).hasSize(2);
+                assertThat(savedProjects.stream().allMatch(p -> p.getDeletedAt() != null)).isTrue();
+        }
+
+        // ==================================================================================
+        // 3. MEMBER MANAGEMENT TESTS
+        // ==================================================================================
+
+        @Test
+        @DisplayName("addMember - Should throw CONFLICT if user is already a member")
+        void addMember_ShouldThrowConflictIfAlreadyMember() {
+                // Arrange
+                UUID requesterId = UUID.randomUUID();
+                UUID projectId = UUID.randomUUID();
+                UUID newUserId = UUID.randomUUID();
+
+                when(projectRepository.findById(projectId))
+                                .thenReturn(Optional.of(Project.builder().workspaceId(UUID.randomUUID()).build()));
+                when(projectMemberRepository.findByProjectIdAndUserId(projectId, requesterId))
+                                .thenReturn(Optional.of(ProjectMember.builder().role("ADMIN").build()));
+                when(workspaceMemberRepository.findByWorkspaceIdAndUserId(any(), any()))
+                                .thenReturn(Optional.of(new WorkspaceMember()));
+                // This is the key mock for this test
+                when(projectMemberRepository.findByProjectIdAndUserId(projectId, newUserId))
+                                .thenReturn(Optional.of(new ProjectMember()));
+
+                // Act & Assert
+                var exception = assertThrows(ResponseStatusException.class,
+                                () -> projectService.addMember(requesterId, projectId, newUserId, "EDITOR"));
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        }
+
+        @Test
+        @DisplayName("removeMember - Should cascade remove from all descendant projects")
+        void removeMember_ShouldCascadeRemoveFromDescendants() {
+                // Arrange
+                UUID requesterId = UUID.randomUUID();
+                UUID projectId = UUID.randomUUID();
+                UUID targetUserId = UUID.randomUUID();
+                UUID childProjectId = UUID.randomUUID();
+                List<UUID> descendantIds = List.of(childProjectId);
+
+                ProjectMember targetMember = ProjectMember.builder().userId(targetUserId).role("EDITOR").build();
+
+                // Mock permission checks
+                when(projectRepository.findById(projectId))
+                                .thenReturn(Optional.of(Project.builder().workspaceId(UUID.randomUUID()).build()));
+                when(projectMemberRepository.findByProjectIdAndUserId(projectId, requesterId))
+                                .thenReturn(Optional.of(ProjectMember.builder().role("ADMIN").build()));
+
+                when(projectMemberRepository.findByProjectIdAndUserId(projectId, targetUserId))
+                                .thenReturn(Optional.of(targetMember));
+                when(projectRepository.findAllDescendantIds(projectId)).thenReturn(descendantIds);
+
+                // Act
+                projectService.removeMember(requesterId, projectId, targetUserId);
+
+                // Assert
+                verify(projectMemberRepository).delete(targetMember); // Removed from parent
+                verify(projectMemberRepository).deleteAllByUserIdAndProjectIdIn(targetUserId, descendantIds); // Cascade
+                                                                                                              // removed
+                                                                                                              // from
+                                                                                                              // children
+        }
+
+        @Test
+        @DisplayName("removeMember - Should throw FORBIDDEN when trying to remove the owner")
+        void removeMember_ShouldThrowForbiddenWhenRemovingOwner() {
+                // Arrange
+                UUID requesterId = UUID.randomUUID();
+                UUID projectId = UUID.randomUUID();
+                UUID targetUserId = UUID.randomUUID();
+                ProjectMember ownerMember = ProjectMember.builder().userId(targetUserId).role("OWNER").build();
+
+                when(projectMemberRepository.findByProjectIdAndUserId(projectId, targetUserId))
+                                .thenReturn(Optional.of(ownerMember));
+
+                // Act & Assert
+                var exception = assertThrows(ResponseStatusException.class,
+                                () -> projectService.removeMember(requesterId, projectId, targetUserId));
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        }
+
+        // ==================================================================================
+        // 4. OWNERSHIP TRANSFER TESTS
+        // ==================================================================================
+
+        @Test
+        @DisplayName("transferOwnership - Should succeed and swap roles correctly")
+        void transferOwnership_ShouldSucceedAndSwapRoles() {
+                // Arrange
+                UUID ownerId = UUID.randomUUID();
+                UUID newOwnerId = UUID.randomUUID();
+                UUID projectId = UUID.randomUUID();
+                UUID workspaceId = UUID.randomUUID();
+
+                Project project = Project.builder().id(projectId).workspaceId(workspaceId).build();
+                ProjectMember currentOwner = ProjectMember.builder().projectId(projectId).userId(ownerId).role("OWNER")
+                                .build();
+                ProjectMember newOwner = ProjectMember.builder().projectId(projectId).userId(newOwnerId).role("EDITOR")
+                                .build();
+
+                // Mock permission checks
+                when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
+                when(workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, ownerId))
+                                .thenReturn(Optional.of(new WorkspaceMember()));
+                when(projectMemberRepository.findByProjectIdAndUserId(projectId, ownerId))
+                                .thenReturn(Optional.of(currentOwner));
+
+                // Mock the logic
+                when(projectMemberRepository.findByProjectIdAndUserId(projectId, newOwnerId))
+                                .thenReturn(Optional.of(newOwner));
+                when(projectMemberRepository.findAllByProjectId(projectId)).thenReturn(List.of(currentOwner, newOwner));
+
+                // Act
+                projectService.transferOwnership(ownerId, projectId, newOwnerId);
+
+                // Assert
+                ArgumentCaptor<ProjectMember> captor = ArgumentCaptor.forClass(ProjectMember.class);
+                verify(projectMemberRepository, times(2)).save(captor.capture());
+
+                List<ProjectMember> savedMembers = captor.getAllValues();
+                ProjectMember demotedOwner = savedMembers.stream().filter(m -> m.getUserId().equals(ownerId))
+                                .findFirst().get();
+                ProjectMember promotedOwner = savedMembers.stream().filter(m -> m.getUserId().equals(newOwnerId))
+                                .findFirst().get();
+
+                assertThat(demotedOwner.getRole()).isEqualTo("ADMIN");
+                assertThat(promotedOwner.getRole()).isEqualTo("OWNER");
+        }
+
+        @Test
+        @DisplayName("transferOwnership - Should fail if new owner is not a project member")
+        void transferOwnership_ShouldFailIfNewOwnerNotMember() {
+                // Arrange
+                UUID ownerId = UUID.randomUUID();
+                UUID newOwnerId = UUID.randomUUID();
+                UUID projectId = UUID.randomUUID();
+
+                // Mock permission check to pass
+                when(projectRepository.findById(projectId))
+                                .thenReturn(Optional.of(Project.builder().workspaceId(UUID.randomUUID()).build()));
+                when(projectMemberRepository.findByProjectIdAndUserId(projectId, ownerId))
+                                .thenReturn(Optional.of(ProjectMember.builder().role("OWNER").build()));
+                when(workspaceMemberRepository.findByWorkspaceIdAndUserId(any(), any()))
+                                .thenReturn(Optional.of(new WorkspaceMember()));
+
+                // Mock new owner not being found
+                when(projectMemberRepository.findByProjectIdAndUserId(projectId, newOwnerId))
+                                .thenReturn(Optional.empty());
+
+                // Act & Assert
+                var exception = assertThrows(ResponseStatusException.class,
+                                () -> projectService.transferOwnership(ownerId, projectId, newOwnerId));
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+}
+```
+
+- in backend/src/test/java/com/fractal/backend/controller/ProjectControllerTest.java
+```
+package com.fractal.backend.controller;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fractal.backend.dto.AddProjectMemberRequest;
+import com.fractal.backend.dto.CreateProjectRequest;
+import com.fractal.backend.dto.ProjectMemberDTO;
+import com.fractal.backend.dto.ProjectResponse;
+import com.fractal.backend.dto.TransferProjectOwnershipRequest;
+import com.fractal.backend.dto.UpdateProjectMemberRequest;
+import com.fractal.backend.model.Project;
+import com.fractal.backend.model.User;
+import com.fractal.backend.repository.UserRepository;
+import com.fractal.backend.security.JwtAuthenticationFilter;
+import com.fractal.backend.service.JwtService;
+import com.fractal.backend.service.ProjectService;
+
+@WebMvcTest(ProjectController.class)
+@AutoConfigureMockMvc(addFilters = false)
+class ProjectControllerTest {
+
+        @Autowired
+        private MockMvc mockMvc;
+
+        @MockitoBean
+        private ProjectService projectService;
+
+        private final ObjectMapper objectMapper = new ObjectMapper();
+
+        @MockitoBean
+        private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+        @MockitoBean
+        private JwtService jwtService;
+
+        @MockitoBean
+        private UserRepository userRepository;
+
+        private UUID userId;
+        private UUID workspaceId;
+        private UUID projectId;
+
+        @BeforeEach
+        void setUp() {
+                userId = UUID.randomUUID();
+                workspaceId = UUID.randomUUID();
+                projectId = UUID.randomUUID();
+
+                // 1. Manually set the Authentication Principal to our custom User entity
+                // This is crucial because @WithMockUser creates a Spring UserDetails, not your
+                // entity
+                User mockUser = User.builder().id(userId).email("test@fractal.com").build();
+                UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(mockUser, null,
+                                Collections.emptyList());
+                SecurityContextHolder.getContext().setAuthentication(auth);
+        }
+
+        private User setupMockUser(UUID userId) {
+                User user = new User();
+                user.setId(userId);
+                user.setEmail("test@fractal.com");
+
+                SecurityContextHolder.getContext().setAuthentication(
+                                new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+                return user;
+        }
+
+        // ==================================================================================
+        // 1. CREATE PROJECT POST /api/workspaces/{workspaceId}/projects
+        // ==================================================================================
+
+        @Test
+        @DisplayName("Create Project - Success")
+        void createProject_Success() throws Exception {
+                CreateProjectRequest request = new CreateProjectRequest();
+                request.setName("New Project");
+                request.setColor("#000000");
+
+                Project mockProject = Project.builder().id(projectId).name("New Project").build();
+
+                when(projectService.createProject(eq(userId), eq(workspaceId), eq("New Project"), eq("#000000"), any()))
+                                .thenReturn(mockProject);
+
+                mockMvc.perform(post("/api/workspaces/{workspaceId}/projects", workspaceId)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.id").value(projectId.toString()))
+                                .andExpect(jsonPath("$.role").value("OWNER"));
+        }
+
+        @Test
+        @DisplayName("Create Project - 400 Bad Request (Validation Name Blank)")
+        void createProject_ValidationFail() throws Exception {
+                CreateProjectRequest request = new CreateProjectRequest();
+                request.setName(""); // Invalid @NotBlank
+
+                mockMvc.perform(post("/api/workspaces/{workspaceId}/projects", workspaceId)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isBadRequest()); // Verifies @Valid works
+        }
+
+        // ==================================================================================
+        // 2. GET PROJECTS GET /api/workspaces/{workspaceId}/projects
+        // ==================================================================================
+
+        @Test
+        @DisplayName("Get Projects - Success")
+        void getProjects_Success() throws Exception {
+                ProjectResponse response = ProjectResponse.builder().id(projectId).name("Demo").build();
+                when(projectService.getProjects(userId, workspaceId)).thenReturn(List.of(response));
+
+                mockMvc.perform(get("/api/workspaces/{workspaceId}/projects", workspaceId)
+                                .with(csrf()))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.length()").value(1));
+        }
+
+        // ==================================================================================
+        // 3. UPDATE PROJECT PUT /api/projects/{projectId}
+        // ==================================================================================
+
+        @Test
+        @DisplayName("Update Project - Success")
+        void updateProject_Success() throws Exception {
+                CreateProjectRequest request = new CreateProjectRequest();
+                request.setName("Updated Name");
+                request.setColor("#FFFFFF");
+
+                Project mockProject = Project.builder().id(projectId).name("Updated Name").build();
+                when(projectService.updateProject(userId, projectId, "Updated Name", "#FFFFFF"))
+                                .thenReturn(mockProject);
+
+                mockMvc.perform(put("/api/projects/{projectId}", projectId)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.name").value("Updated Name"));
+        }
+
+        @Test
+        @DisplayName("Update Project - 403 Forbidden (Not Admin)")
+        void updateProject_Forbidden() throws Exception {
+                CreateProjectRequest request = new CreateProjectRequest();
+                request.setName("Hacked");
+
+                when(projectService.updateProject(any(), any(), any(), any()))
+                                .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                                "Insufficient permissions"));
+
+                mockMvc.perform(put("/api/projects/{projectId}", projectId)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isForbidden());
+        }
+
+        // ==================================================================================
+        // 4. DELETE PROJECT DELETE /api/projects/{projectId}
+        // ==================================================================================
+
+        @Test
+        @DisplayName("Delete Project - Success")
+        void deleteProject_Success() throws Exception {
+                mockMvc.perform(delete("/api/projects/{projectId}", projectId)
+                                .with(csrf()))
+                                .andExpect(status().isNoContent());
+
+                verify(projectService).deleteProject(userId, projectId);
+        }
+
+        @Test
+        @DisplayName("Delete Project - 404 Not Found")
+        void deleteProject_NotFound() throws Exception {
+                doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND))
+                                .when(projectService).deleteProject(userId, projectId);
+
+                mockMvc.perform(delete("/api/projects/{projectId}", projectId)
+                                .with(csrf()))
+                                .andExpect(status().isNotFound());
+        }
+
+        // ==================================================================================
+        // 5. GET MEMBERS GET /api/projects/{projectId}/members
+        // ==================================================================================
+
+        @Test
+        @DisplayName("Get Members - Success")
+        void getMembers_Success() throws Exception {
+                ProjectMemberDTO member = new ProjectMemberDTO(userId, "email", "name", "url", "OWNER", null);
+                when(projectService.getProjectMembers(userId, projectId)).thenReturn(List.of(member));
+
+                mockMvc.perform(get("/api/projects/{projectId}/members", projectId)
+                                .with(csrf()))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$[0].role").value("OWNER"));
+        }
+
+        // ==================================================================================
+        // 6. ADD MEMBER POST /api/projects/{projectId}/members
+        // ==================================================================================
+
+        @Test
+        @DisplayName("Add Member - Success")
+        void addMember_Success() throws Exception {
+                AddProjectMemberRequest request = new AddProjectMemberRequest();
+                request.setUserId(UUID.randomUUID());
+                request.setRole("EDITOR");
+
+                mockMvc.perform(post("/api/projects/{projectId}/members", projectId)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk());
+
+                verify(projectService).addMember(eq(userId), eq(projectId), eq(request.getUserId()), eq("EDITOR"));
+        }
+
+        @Test
+        @DisplayName("Add Member - 400 Bad Request (Missing UserID)")
+        void addMember_ValidationFail() throws Exception {
+                AddProjectMemberRequest request = new AddProjectMemberRequest();
+                request.setRole("EDITOR");
+                // UserId is null
+
+                mockMvc.perform(post("/api/projects/{projectId}/members", projectId)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("Add Member - 409 Conflict (Already Member)")
+        void addMember_Conflict() throws Exception {
+                UUID userId = UUID.randomUUID();
+                AddProjectMemberRequest request = new AddProjectMemberRequest();
+                request.setUserId(userId);
+                request.setRole("EDITOR"); // Explicitly set the role
+                setupMockUser(userId);
+
+                doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "User is already a member"))
+                                .when(projectService).addMember(
+                                                eq(userId), // The user ID from the security context
+                                                eq(projectId), // The project ID from the path
+                                                eq(request.getUserId()), // The user ID from the request body
+                                                eq(request.getRole()) // The role from the request body
+                                );
+
+                mockMvc.perform(post("/api/projects/{projectId}/members", projectId)
+                                // csrf() is not needed when addFilters=false
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isConflict()); // Now correctly expects and gets 409
+        }
+
+        // ==================================================================================
+        // 7. UPDATE MEMBER ROLE PUT /api/projects/{projectId}/members/{userId}
+        // ==================================================================================
+
+        @Test
+        @DisplayName("Update Member Role - Success")
+        void updateMemberRole_Success() throws Exception {
+                UpdateProjectMemberRequest request = new UpdateProjectMemberRequest();
+                request.setRole("ADMIN");
+                UUID targetUser = UUID.randomUUID();
+
+                mockMvc.perform(put("/api/projects/{projectId}/members/{targetUser}", projectId, targetUser)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk());
+
+                verify(projectService).updateMemberRole(userId, projectId, targetUser, "ADMIN");
+        }
+
+        @Test
+        @DisplayName("Update Member Role - 400 Bad Request (Blank Role)")
+        void updateMemberRole_ValidationFail() throws Exception {
+                UpdateProjectMemberRequest request = new UpdateProjectMemberRequest();
+                request.setRole(""); // Blank
+
+                mockMvc.perform(put("/api/projects/{projectId}/members/{userId}", projectId, UUID.randomUUID())
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isBadRequest());
+        }
+
+        // ==================================================================================
+        // 8. REMOVE MEMBER DELETE /api/projects/{projectId}/members/{userId}
+        // ==================================================================================
+
+        @Test
+        @DisplayName("Remove Member - Success")
+        void removeMember_Success() throws Exception {
+                UUID targetUser = UUID.randomUUID();
+
+                mockMvc.perform(delete("/api/projects/{projectId}/members/{targetUser}", projectId, targetUser)
+                                .with(csrf()))
+                                .andExpect(status().isNoContent());
+
+                verify(projectService).removeMember(userId, projectId, targetUser);
+        }
+
+        @Test
+        @DisplayName("Remove Member - 403 Forbidden (Trying to remove Owner)")
+        void removeMember_Forbidden() throws Exception {
+                UUID targetUser = UUID.randomUUID();
+                doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot remove owner"))
+                                .when(projectService).removeMember(userId, projectId, targetUser);
+
+                mockMvc.perform(delete("/api/projects/{projectId}/members/{targetUser}", projectId, targetUser)
+                                .with(csrf()))
+                                .andExpect(status().isForbidden());
+        }
+
+        // ==================================================================================
+        // 9. TRANSFER OWNERSHIP POST /api/projects/{projectId}/transfer-ownership
+        // ==================================================================================
+
+        @Test
+        @DisplayName("Transfer Ownership - Success")
+        void transferOwnership_Success() throws Exception {
+                TransferProjectOwnershipRequest request = new TransferProjectOwnershipRequest();
+                request.setNewOwnerId(UUID.randomUUID());
+
+                mockMvc.perform(post("/api/projects/{projectId}/transfer-ownership", projectId)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("Transfer Ownership - 400 Bad Request (Null Owner ID)")
+        void transferOwnership_ValidationFail() throws Exception {
+                TransferProjectOwnershipRequest request = new TransferProjectOwnershipRequest();
+                // newOwnerId is null
+
+                mockMvc.perform(post("/api/projects/{projectId}/transfer-ownership", projectId)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isBadRequest());
+        }
+}
+```
+
 Till this point everything is done and implemented by me. i want your help after this point.
 
 Run spring boot using: ./mvnw spring-boot:run
 
-I want you to complete the backend for projects now.. I believe all the apis for workspace is done... basically all operations like inviting people to workspace, CRUD operations like updating the name, deleting the workspace etc. accoring to the original plan is done.. now i want to move to project level. - **Infinite Nesting:** Allow for infinite nesting of projects (sub-projects) and tasks (sub-tasks) using closure tables with `Ancestor`, `Descendant`, and `Depth` columns. this part.. so I need apis so that user can create delete update read projects in a workspace. he can infinitely create sub projects in a projects.. I will use closure tables for this. Also on the project level there will be 4 roles: "OWNER" (the one who creates, also has delete and transfer ownership permission) , "ADMIN" all permission, editor (can create and edit tasks in a project), and viewer (he can only view the tasks and subprojects in the project if he is member of a subproject), 
+I want you to complete the backend for projects now.. I believe all the apis for workspace is done... basically all operations like inviting people to workspace, CRUD operations like updating the name, deleting the workspace etc. accoring to the original plan is done.. now i want to move to project level. - **Infinite Nesting:** Allow for infinite nesting of projects (sub-projects) and tasks (sub-tasks) using closure tables with `Ancestor`, `Descendant`, and `Depth` columns. this part.. so I need apis so that user can create delete update read projects in a workspace. he can infinitely create sub projects in a projects.. I will use closure tables for this. Also on the project level there will be 4 roles: "OWNER" (the one who creates, also has delete and transfer ownership permission) , "ADMIN" all permission, editor (can create and edit tasks in a project), and viewer (he can only view the tasks and subprojects in the project if he is member of a subproject),
 
-I am also thinking..by default when a new sub project is created by an admin/owner, all the current admin and owners are members of it unless specified who to choose. Is this a good UX? what is the industry default? should i simply have 1 user set for all the projects and subprojects or different usersets for every subproject?? please research how this is currently done and what the best user experience is. 
+I am also thinking..by default when a new sub project is created by an admin/owner, all the current admin and owners are members of it unless specified who to choose. Is this a good UX? what is the industry default? should i simply have 1 user set for all the projects and subprojects or different usersets for every subproject?? please research how this is currently done and what the best user experience is.
 
 Once you have finalized the UX..Please go step by step for the backend. make sure I am following the industry level best practices. Make sure to write the test for every API you create.. dont miss any apis (must).
 
+````
