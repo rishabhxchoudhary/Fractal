@@ -74,7 +74,7 @@ export default function ProjectDetailPage() {
               </div>
               <Button
                 variant="outline"
-                onClick={() => router.push("/projects")}
+                onClick={() => router.push("..")}
                 className="ml-auto"
               >
                 Back to Projects
@@ -214,7 +214,7 @@ export default function ProjectDetailPage() {
               {subprojects.map((subproject) => (
                 <div
                   key={subproject.id}
-                  onClick={() => router.push(`/projects/${subproject.id}`)}
+                  onClick={() => router.push(`./${subproject.id}`)}
                   className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-3 flex-1">

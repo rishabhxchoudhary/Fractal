@@ -62,14 +62,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   const navItems = [
-    { icon: Home, label: "Home", href: "/dashboard" },
-    { icon: FolderOpen, label: "Projects", href: "/projects" },
-    { icon: Inbox, label: "Inbox", href: "/dashboard/inbox" },
-    { icon: ListTodo, label: "My Tasks", href: "/dashboard/tasks" },
+    { icon: Home, label: "Home", href: "./dashboard" },
+    { icon: FolderOpen, label: "Projects", href: "../projects" },
+    { icon: Inbox, label: "Inbox", href: "./dashboard/inbox" },
+    { icon: ListTodo, label: "My Tasks", href: "./dashboard/tasks" },
   ]
 
   const handleSettingsClick = () => {
-    router.push("/settings")
+    router.push("../settings")
   }
 
   return (

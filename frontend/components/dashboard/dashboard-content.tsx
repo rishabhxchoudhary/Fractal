@@ -25,19 +25,19 @@ export function DashboardContent() {
       icon: Plus, 
       label: "New Task", 
       description: "Create a new task",
-      action: () => router.push("/dashboard/tasks?new=true")
+      action: () => router.push("./tasks?new=true")
     },
     { 
       icon: Target, 
       label: "View Projects", 
       description: "Manage your projects",
-      action: () => router.push("/projects")
+      action: () => router.push("../projects")
     },
     { 
       icon: Calendar, 
       label: "Schedule", 
       description: "View your calendar",
-      action: () => router.push("/dashboard/calendar")
+      action: () => router.push("./calendar")
     },
   ]
 
@@ -145,7 +145,7 @@ export function DashboardContent() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => router.push("/projects")}
+                onClick={() => router.push("../projects")}
                 className="gap-1"
               >
                 View All <ArrowRight className="h-4 w-4" />
@@ -157,7 +157,7 @@ export function DashboardContent() {
               {projects.slice(0, 5).map((project) => (
                 <div
                   key={project.id}
-                  onClick={() => router.push(`/projects/${project.id}`)}
+                  onClick={() => router.push(`../projects/${project.id}`)}
                   className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -178,7 +178,7 @@ export function DashboardContent() {
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={() => router.push("/projects")}
+                  onClick={() => router.push("../projects")}
                 >
                   View all {projects.length} projects
                 </Button>
