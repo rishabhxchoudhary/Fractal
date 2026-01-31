@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
 import { Loader2, MoreVertical, Trash2 } from "lucide-react"
+import { hasProjectPermission, ProjectPermission } from "@/lib/permissions"
 import type { Project, ProjectMember, ProjectRole } from "@/lib/types"
 
 interface ProjectMembersDialogProps {
@@ -132,7 +133,7 @@ export function ProjectMembersDialog({
 
         <div className="space-y-6">
           {/* Add Member Form */}
-          {project.role === "OWNER" || project.role === "ADMIN" ? (
+          {hasProjectPermission(project.role, ProjectPermission.ADD_MEMBER) && (
             <form onSubmit={handleAddMember} className="space-y-4 p-4 border rounded-lg bg-muted/50">
               <h4 className="font-medium">Add New Member</h4>
               <div className="grid grid-cols-3 gap-2">
@@ -189,7 +190,7 @@ export function ProjectMembersDialog({
                 </TableHeader>
                 <TableBody>
                   {members.map((member) => (
-                    <TableRow key={member.id}>
+                    <TableRow key={member.userId}>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Avatar className="h-8 w-8">
@@ -205,8 +206,8 @@ export function ProjectMembersDialog({
                       </TableCell>
                       <TableCell className="text-sm">{member.email}</TableCell>
                       <TableCell>
-                        {project.role === "OWNER" || project.role === "ADMIN" ? (
-                          <Select value={member.role} onValueChange={(role) => handleUpdateRole(member.id, role as ProjectRole)}>
+                        {hasProjectPermission(project.role, ProjectPermission.UPDATE_MEMBER_ROLE) ? (
+                          <Select value={member.role} onValueChange={(role) => handleUpdateRole(member.userId, role as ProjectRole)}>
                             <SelectTrigger className="w-32">
                               <SelectValue />
                             </SelectTrigger>
@@ -221,7 +222,7 @@ export function ProjectMembersDialog({
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {project.role === "OWNER" && member.role !== "OWNER" ? (
+                        {hasProjectPermission(project.role, ProjectPermission.REMOVE_MEMBER) && member.role !== "OWNER" && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -230,7 +231,7 @@ export function ProjectMembersDialog({
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
-                                onClick={() => handleRemoveMember(member.id)}
+                                onClick={() => handleRemoveMember(member.userId)}
                                 className="text-destructive focus:text-destructive"
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
@@ -238,7 +239,7 @@ export function ProjectMembersDialog({
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        ) : null}
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

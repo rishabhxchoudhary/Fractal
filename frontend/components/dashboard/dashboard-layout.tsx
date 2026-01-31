@@ -50,6 +50,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter()
   const { user, logout } = useAuth()
   const { currentProject, setCurrentProject } = useProjects()
+  const [showMainSidebar, setShowMainSidebar] = useState(true)
   const [showProjectSidebar, setShowProjectSidebar] = useState(true)
 
   const handleLogout = async () => {
@@ -74,7 +75,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Sidebar */}
+      {/* Main Sidebar */}
+      {showMainSidebar && (
       <aside className="w-64 border-r bg-muted/30 flex flex-col">
         {/* Workspace selector */}
         <div className="p-3 border-b">
@@ -131,12 +133,26 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </PermissionGuard>
         </div>
       </aside>
+      )}
 
       {/* Main content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <header className="h-14 border-b flex items-center justify-between px-4">
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setShowMainSidebar(!showMainSidebar)}
+              title={showMainSidebar ? "Hide sidebar" : "Show sidebar"}
+            >
+              {showMainSidebar ? (
+                <ChevronLeft className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </Button>
             {currentProject && (
               <Button
                 variant="ghost"

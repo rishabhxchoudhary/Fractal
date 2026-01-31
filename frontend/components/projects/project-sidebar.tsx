@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useProjects } from "@/lib/project-context";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ interface ProjectSidebarProps {
 }
 
 export function ProjectSidebar({ onProjectSelect }: ProjectSidebarProps) {
+  const router = useRouter();
   const { projects, currentProject, refreshProjects, createProject, deleteProject } = useProjects();
   const { currentWorkspace } = useAuth();
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
@@ -135,7 +137,10 @@ export function ProjectSidebar({ onProjectSelect }: ProjectSidebarProps) {
             <Button
               variant={currentProject?.id === project.id ? "secondary" : "ghost"}
               className="flex-1 justify-start gap-2 h-7"
-              onClick={() => onProjectSelect?.(project)}
+              onClick={() => {
+                onProjectSelect?.(project);
+                router.push(`./${project.id}`);
+              }}
             >
               <FolderOpen className="h-4 w-4 flex-shrink-0" />
               <span className="truncate">{project.name}</span>

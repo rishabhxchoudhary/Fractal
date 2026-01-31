@@ -27,6 +27,7 @@ import { CreateProjectDialog } from "@/components/projects/create-project-dialog
 import { EditProjectDialog } from "@/components/projects/edit-project-dialog"
 import { DeleteProjectDialog } from "@/components/projects/delete-project-dialog"
 import { ProjectMembersDialog } from "@/components/projects/project-members-dialog"
+import { hasProjectPermission, ProjectPermission } from "@/lib/permissions"
 import type { Project } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -35,7 +36,7 @@ export default function ProjectDetailPage() {
   const params = useParams()
   const projectId = params.projectId as string
   const { currentWorkspace } = useAuth()
-  const { projects, setCurrentProject } = useProjects()
+  const { projects, setCurrentProject, refreshProjects } = useProjects()
   const [openCreateDialog, setOpenCreateDialog] = useState(false)
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
@@ -43,6 +44,12 @@ export default function ProjectDetailPage() {
 
   const project = projects.find((p) => p.id === projectId)
   const subprojects = projects.filter((p) => p.parentId === projectId)
+
+  useEffect(() => {
+    if (currentWorkspace?.id && !project) {
+      refreshProjects(currentWorkspace.id)
+    }
+  }, [projectId, currentWorkspace?.id, project, refreshProjects])
 
   useEffect(() => {
     if (project) {
@@ -113,7 +120,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {project.role === "OWNER" || project.role === "ADMIN" ? (
+        {hasProjectPermission(project.role, ProjectPermission.UPDATE_PROJECT) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon">
@@ -125,11 +132,13 @@ export default function ProjectDetailPage() {
                 <Edit2 className="h-4 w-4 mr-2" />
                 Edit Project
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMembersProject(project)}>
-                <Users className="h-4 w-4 mr-2" />
-                Manage Members
-              </DropdownMenuItem>
-              {project.role === "OWNER" && (
+              {hasProjectPermission(project.role, ProjectPermission.VIEW_MEMBERS) && (
+                <DropdownMenuItem onClick={() => setMembersProject(project)}>
+                  <Users className="h-4 w-4 mr-2" />
+                  Manage Members
+                </DropdownMenuItem>
+              )}
+              {hasProjectPermission(project.role, ProjectPermission.DELETE_PROJECT) && (
                 <DropdownMenuItem
                   onClick={() => setDeletingProject(project)}
                   className="text-destructive focus:text-destructive"
@@ -140,7 +149,7 @@ export default function ProjectDetailPage() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : null}
+        )}
       </div>
 
       {/* Stats */}
@@ -189,7 +198,7 @@ export default function ProjectDetailPage() {
                 Create and manage sub-projects within this project
               </CardDescription>
             </div>
-            {project.role === "OWNER" || project.role === "ADMIN" || project.role === "EDITOR" ? (
+            {hasProjectPermission(project.role, ProjectPermission.CREATE_SUBPROJECT) && (
               <Button
                 onClick={() => setOpenCreateDialog(true)}
                 className="gap-2"
@@ -197,7 +206,7 @@ export default function ProjectDetailPage() {
                 <FolderPlus className="h-4 w-4" />
                 New Sub-project
               </Button>
-            ) : null}
+            )}
           </div>
         </CardHeader>
         <CardContent>

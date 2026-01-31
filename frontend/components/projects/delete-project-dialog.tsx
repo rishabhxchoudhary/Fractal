@@ -76,7 +76,7 @@ export function DeleteProjectDialog({
           <AlertDialogAction
             onClick={handleDelete}
             disabled={!canDelete || isLoading}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            className="bg-destructive text-white hover:bg-destructive/90 disabled:opacity-50"
           >
             {isLoading ? "Deleting..." : "Delete Project"}
           </AlertDialogAction>

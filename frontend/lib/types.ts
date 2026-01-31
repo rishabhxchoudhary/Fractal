@@ -61,7 +61,7 @@ export interface Project {
 }
 
 export interface ProjectMember {
-  id: string
+  userId: string
   email: string
   fullName: string
   avatarUrl?: string

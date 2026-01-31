@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useProjects } from "@/lib/project-context"
+import { hasProjectPermission, ProjectPermission } from "@/lib/permissions"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -159,7 +160,7 @@ export default function ProjectsPage() {
                         <ChevronRight className="h-4 w-4 mr-2" />
                         Open
                       </DropdownMenuItem>
-                      {project.role === "OWNER" || project.role === "ADMIN" ? (
+                      {hasProjectPermission(project.role, ProjectPermission.UPDATE_PROJECT) && (
                         <>
                           <DropdownMenuItem onClick={() => setEditingProject(project)}>
                             <Edit2 className="h-4 w-4 mr-2" />
@@ -169,7 +170,7 @@ export default function ProjectsPage() {
                             <Users className="h-4 w-4 mr-2" />
                             Members
                           </DropdownMenuItem>
-                          {project.role === "OWNER" && (
+                          {hasProjectPermission(project.role, ProjectPermission.DELETE_PROJECT) && (
                             <DropdownMenuItem
                               onClick={() => setDeletingProject(project)}
                               className="text-destructive focus:text-destructive"
@@ -179,7 +180,13 @@ export default function ProjectsPage() {
                             </DropdownMenuItem>
                           )}
                         </>
-                      ) : null}
+                      )}
+                      {hasProjectPermission(project.role, ProjectPermission.VIEW_MEMBERS) && (
+                        <DropdownMenuItem onClick={() => setMembersProject(project)}>
+                          <Users className="h-4 w-4 mr-2" />
+                          View Members
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
