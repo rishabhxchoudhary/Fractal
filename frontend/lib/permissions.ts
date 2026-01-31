@@ -6,6 +6,7 @@
  */
 
 export type WorkspaceRole = "OWNER" | "ADMIN" | "MEMBER";
+export type ProjectRole = "OWNER" | "ADMIN" | "EDITOR" | "VIEWER";
 
 /**
  * Permission/Capability types for workspace operations
@@ -30,9 +31,59 @@ export enum WorkspacePermission {
 }
 
 /**
+ * Permission/Capability types for project operations
+ */
+export enum ProjectPermission {
+  // Project Management
+  UPDATE_PROJECT = "UPDATE_PROJECT",
+  DELETE_PROJECT = "DELETE_PROJECT",
+  CREATE_SUBPROJECT = "CREATE_SUBPROJECT",
+  
+  // Member Management
+  ADD_MEMBER = "ADD_MEMBER",
+  REMOVE_MEMBER = "REMOVE_MEMBER",
+  UPDATE_MEMBER_ROLE = "UPDATE_MEMBER_ROLE",
+  
+  // View Operations
+  VIEW_PROJECT = "VIEW_PROJECT",
+  VIEW_MEMBERS = "VIEW_MEMBERS",
+}
+
+/**
  * Permission matrix: Maps roles to their allowed permissions
  * This is the single source of truth for all permissions
  */
+export const PROJECT_ROLE_PERMISSIONS: Record<ProjectRole, ProjectPermission[]> = {
+  OWNER: [
+    ProjectPermission.UPDATE_PROJECT,
+    ProjectPermission.DELETE_PROJECT,
+    ProjectPermission.CREATE_SUBPROJECT,
+    ProjectPermission.ADD_MEMBER,
+    ProjectPermission.REMOVE_MEMBER,
+    ProjectPermission.UPDATE_MEMBER_ROLE,
+    ProjectPermission.VIEW_PROJECT,
+    ProjectPermission.VIEW_MEMBERS,
+  ],
+  ADMIN: [
+    ProjectPermission.UPDATE_PROJECT,
+    ProjectPermission.CREATE_SUBPROJECT,
+    ProjectPermission.ADD_MEMBER,
+    ProjectPermission.REMOVE_MEMBER,
+    ProjectPermission.UPDATE_MEMBER_ROLE,
+    ProjectPermission.VIEW_PROJECT,
+    ProjectPermission.VIEW_MEMBERS,
+  ],
+  EDITOR: [
+    ProjectPermission.CREATE_SUBPROJECT,
+    ProjectPermission.VIEW_PROJECT,
+    ProjectPermission.VIEW_MEMBERS,
+  ],
+  VIEWER: [
+    ProjectPermission.VIEW_PROJECT,
+    ProjectPermission.VIEW_MEMBERS,
+  ],
+};
+
 export const ROLE_PERMISSIONS: Record<WorkspaceRole, WorkspacePermission[]> = {
   OWNER: [
     WorkspacePermission.UPDATE_WORKSPACE,
@@ -127,6 +178,43 @@ export function hasMinimumRole(
     OWNER: 3,
     ADMIN: 2,
     MEMBER: 1,
+  };
+  
+  return roleHierarchy[userRole] >= roleHierarchy[requiredRole];
+}
+
+/**
+ * Check if a project role has a specific permission
+ * @param role - The user's role in the project
+ * @param permission - The permission to check
+ * @returns true if the role has the permission, false otherwise
+ */
+export function hasProjectPermission(
+  role: ProjectRole | null,
+  permission: ProjectPermission
+): boolean {
+  if (!role) return false;
+  return PROJECT_ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
+}
+
+/**
+ * Check if a project role is at least as powerful as another role
+ * Role hierarchy: OWNER > ADMIN > EDITOR > VIEWER
+ * @param userRole - The user's role
+ * @param requiredRole - The minimum required role
+ * @returns true if userRole is at least as powerful as requiredRole
+ */
+export function hasMinimumProjectRole(
+  userRole: ProjectRole | null,
+  requiredRole: ProjectRole
+): boolean {
+  if (!userRole) return false;
+  
+  const roleHierarchy: Record<ProjectRole, number> = {
+    OWNER: 4,
+    ADMIN: 3,
+    EDITOR: 2,
+    VIEWER: 1,
   };
   
   return roleHierarchy[userRole] >= roleHierarchy[requiredRole];

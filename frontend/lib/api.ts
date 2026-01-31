@@ -180,6 +180,80 @@ class ApiClient {
     });
   }
 
+  // --- PROJECT ENDPOINTS ---
+
+  async getProjects(workspaceId: string): Promise<any[]> {
+    return this.fetch<any[]>(`/api/workspaces/${workspaceId}/projects`);
+  }
+
+  async createProject(
+    workspaceId: string,
+    data: { name: string; color?: string; parentId?: string | null },
+  ): Promise<any> {
+    return this.fetch<any>(`/api/workspaces/${workspaceId}/projects`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateProject(
+    projectId: string,
+    data: { name?: string; color?: string },
+  ): Promise<any> {
+    return this.fetch<any>(`/api/projects/${projectId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    return this.fetch<void>(`/api/projects/${projectId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getProjectMembers(projectId: string): Promise<any[]> {
+    return this.fetch<any[]>(`/api/projects/${projectId}/members`);
+  }
+
+  async addProjectMember(
+    projectId: string,
+    userId: string,
+    role: string,
+  ): Promise<void> {
+    return this.fetch<void>(`/api/projects/${projectId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ userId, role }),
+    });
+  }
+
+  async updateProjectMemberRole(
+    projectId: string,
+    userId: string,
+    role: string,
+  ): Promise<void> {
+    return this.fetch<void>(`/api/projects/${projectId}/members/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async removeProjectMember(projectId: string, userId: string): Promise<void> {
+    return this.fetch<void>(`/api/projects/${projectId}/members/${userId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async transferProjectOwnership(
+    projectId: string,
+    newOwnerId: string,
+  ): Promise<void> {
+    return this.fetch<void>(`/api/projects/${projectId}/transfer-ownership`, {
+      method: "POST",
+      body: JSON.stringify({ newOwnerId }),
+    });
+  }
+
   logout() {
     this.accessToken = null;
     Cookies.remove("accessToken", { domain: getCookieDomain() });

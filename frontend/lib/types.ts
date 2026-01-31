@@ -47,3 +47,39 @@ export interface CreateWorkspaceResponse {
   workspace: Workspace
   redirectUrl: string
 }
+
+// Project Types
+export type ProjectRole = "OWNER" | "ADMIN" | "EDITOR" | "VIEWER";
+
+export interface Project {
+  id: string
+  name: string
+  color?: string
+  parentId?: string | null
+  role: ProjectRole
+  isArchived?: boolean
+}
+
+export interface ProjectMember {
+  id: string
+  email: string
+  fullName: string
+  avatarUrl?: string
+  role: ProjectRole
+  joinedAt: string
+}
+
+export interface CreateProjectRequest {
+  name: string
+  color?: string
+  parentId?: string | null
+}
+
+export interface ProjectResponse {
+  id: string
+  name: string
+  color?: string
+  parentId?: string | null
+  role: ProjectRole
+  isArchived?: boolean
+}

@@ -1,12 +1,14 @@
 "use client"
 
 import { useAuth } from "@/lib/auth-context"
+import { useProjects } from "@/lib/project-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Calendar, CheckCircle2, Clock, Plus, Target } from "lucide-react"
+import { Calendar, CheckCircle2, Clock, Plus, Target, FolderOpen } from "lucide-react"
 
 export function DashboardContent() {
   const { user, currentWorkspace } = useAuth()
+  const { currentProject } = useProjects()
 
   const quickActions = [
     { icon: Plus, label: "New Task", description: "Create a new task" },
@@ -21,9 +23,15 @@ export function DashboardContent() {
         <h1 className="text-2xl font-bold tracking-tight">
           Good {getGreeting()}, {user?.name?.split(" ")[0] || "there"}
         </h1>
-        <p className="text-muted-foreground">
-          Here&apos;s what&apos;s happening in {currentWorkspace?.name}
-        </p>
+        {currentProject ? (
+          <p className="text-muted-foreground">
+            Working on <span className="font-medium text-foreground">{currentProject.name}</span> in {currentWorkspace?.name}
+          </p>
+        ) : (
+          <p className="text-muted-foreground">
+            Here&apos;s what&apos;s happening in {currentWorkspace?.name}
+          </p>
+        )}
       </div>
 
       {/* Stats */}

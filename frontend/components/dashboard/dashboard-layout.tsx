@@ -1,10 +1,14 @@
 "use client"
 
 import type { ReactNode } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { useProjects } from "@/lib/project-context"
 import { redirectToRoot } from "@/lib/utils"
 import { WorkspaceSelector } from "@/components/workspace/workspace-selector"
+import { ProjectSidebar } from "@/components/projects/project-sidebar"
+import { ProjectBreadcrumbs } from "@/components/projects/project-breadcrumbs"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -14,6 +18,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Bell,
@@ -25,9 +34,12 @@ import {
   Search,
   Settings,
   User,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { PermissionGuard } from "@/components/rbac/permission-guard"
 import { WorkspacePermission } from "@/lib/permissions"
+import type { Project } from "@/lib/types"
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -36,10 +48,16 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter()
   const { user, logout } = useAuth()
+  const { currentProject, setCurrentProject } = useProjects()
+  const [showProjectSidebar, setShowProjectSidebar] = useState(true)
 
   const handleLogout = async () => {
     await logout()
     redirectToRoot("/login")
+  }
+
+  const handleProjectSelect = (project: Project | null) => {
+    setCurrentProject(project)
   }
 
   const navItems = [
@@ -116,7 +134,23 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <header className="h-14 border-b flex items-center justify-between px-4">
-          <div>{/* Breadcrumbs or page title can go here */}</div>
+          <div className="flex items-center gap-2">
+            {currentProject && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setShowProjectSidebar(!showProjectSidebar)}
+                title={showProjectSidebar ? "Hide projects" : "Show projects"}
+              >
+                {showProjectSidebar ? (
+                  <ChevronLeft className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+          </div>
 
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -173,8 +207,25 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-auto">{children}</main>
+        {/* Project Navigation */}
+        {currentProject && showProjectSidebar && (
+          <ProjectBreadcrumbs onNavigate={handleProjectSelect} />
+        )}
+
+        {/* Page content with optional project sidebar */}
+        {currentProject && showProjectSidebar ? (
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
+              <ProjectSidebar onProjectSelect={handleProjectSelect} />
+            </ResizablePanel>
+            <ResizableHandle />
+            <ResizablePanel defaultSize={80} minSize={40}>
+              <main className="flex-1 overflow-auto">{children}</main>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          <main className="flex-1 overflow-auto">{children}</main>
+        )}
       </div>
     </div>
   )
